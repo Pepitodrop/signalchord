@@ -17,6 +17,12 @@ x-v1-environment: &v1-environment
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
 
 services:
+  neo4j:
+    environment:
+      NEO4J_PLUGINS: '["graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: gds.*
+      NEO4J_dbms_security_procedures_allowlist: gds.*
+
   control-plane:
     profiles: [slice]
     build:
@@ -112,6 +118,30 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
+
+  graph-analytics-api:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/graph-analytics
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8092"]
+    environment: {<<: *v1-environment}
+    ports: ["8092:8092"]
+    depends_on: {neo4j: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8092/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  graph-analytics-worker:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/graph-analytics
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on:
+      kafka: {condition: service_healthy}
+      neo4j: {condition: service_healthy}
 
   velato-api:
     profiles: [slice]
