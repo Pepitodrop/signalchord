@@ -1,5 +1,5 @@
 FROM ruby:3.4.4-slim AS build
-ENV BUNDLE_WITHOUT="development" BUNDLE_PATH=/usr/local/bundle
+ENV BUNDLE_WITHOUT="development" BUNDLE_PATH=/usr/local/bundle BUNDLE_FROZEN=true
 WORKDIR /workspace/apps/control-plane
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential libpq-dev git \
  && rm -rf /var/lib/apt/lists/*
@@ -11,7 +11,7 @@ COPY velato/ /workspace/velato/
 RUN bundle exec bootsnap precompile --gemfile app/ config/ || true
 
 FROM ruby:3.4.4-slim
-ENV RAILS_ENV=production RAILS_LOG_TO_STDOUT=1 RAILS_SERVE_STATIC_FILES=0 BUNDLE_WITHOUT="development" BUNDLE_PATH=/usr/local/bundle
+ENV RAILS_ENV=production RAILS_LOG_TO_STDOUT=1 RAILS_SERVE_STATIC_FILES=0 BUNDLE_WITHOUT="development" BUNDLE_PATH=/usr/local/bundle BUNDLE_FROZEN=true
 WORKDIR /workspace/apps/control-plane
 RUN apt-get update && apt-get install -y --no-install-recommends libpq5 curl \
  && rm -rf /var/lib/apt/lists/* \

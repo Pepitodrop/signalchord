@@ -53,6 +53,7 @@ services:
       timeout: 5s
       retries: 20
   kafka-connect:
+    profiles: [connect]
     build: {context: ., dockerfile: infrastructure/docker/connect/Dockerfile}
     ports: ["8083:8083"]
     environment:
@@ -203,7 +204,7 @@ services:
   web:
     profiles: [slice]
     build: {context: ., dockerfile: infrastructure/docker/web.Dockerfile}
-    ports: ["5173:80"]
+    ports: ["5173:8080"]
   feed-collector:
     profiles: [slice]
     build: {context: ., dockerfile: infrastructure/docker/go-service.Dockerfile, args: {TARGET: ./feed-collector}}
