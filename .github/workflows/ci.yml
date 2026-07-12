@@ -26,29 +26,14 @@ jobs:
         with:
           node-version: 22.16.0
       - run: pnpm install --frozen-lockfile=false
-      - name: Upload resolved pnpm lockfile
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: pnpm-lock
           path: pnpm-lock.yaml
           if-no-files-found: error
       - run: pnpm typecheck
       - run: pnpm test
-      - name: Build TypeScript applications
-        shell: bash
-        run: |
-          set +e
-          pnpm build > ts-build.log 2>&1
-          status=$?
-          tail -n 160 ts-build.log
-          exit "$status"
-      - name: Upload TypeScript build diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ts-build-log
-          path: ts-build.log
-          if-no-files-found: error
+      - run: pnpm build
 
   go:
     runs-on: ubuntu-latest
@@ -63,22 +48,9 @@ jobs:
           cache-dependency-path: services/go.mod
       - run: go mod tidy
       - run: test -z "$(gofmt -l .)"
-      - name: Run Go vet
-        shell: bash
-        run: |
-          set +e
-          go vet ./... > go-vet.log 2>&1
-          status=$?
-          cat go-vet.log
-          exit "$status"
-      - name: Upload Go vet diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-vet-log
-          path: services/go-vet.log
-          if-no-files-found: error
+      - run: go vet ./...
       - run: go test -race ./...
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
   python:
     runs-on: ubuntu-latest
@@ -91,17 +63,46 @@ jobs:
           cache-dependency-path: services/requirements.txt
       - run: pip install -r services/requirements.txt pytest==8.4.0 ruff==0.11.13 mypy==1.16.0
       - run: python -m compileall -q services
-      - run: pytest -q services/nlp-pipeline services/velato-engine
+      - run: pytest -q services/nlp-pipeline services/entity-resolution services/claim-intelligence services/velato-engine
       - run: ruff check --select E9,F63,F7,F82 services
 
-  ruby:
+  rails:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17.5-alpine
+        env:
+          POSTGRES_DB: signalchord_control_plane_test
+          POSTGRES_USER: signalchord
+          POSTGRES_PASSWORD: signalchord
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U signalchord -d signalchord_control_plane_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    defaults:
+      run:
+        working-directory: apps/control-plane
+    env:
+      RAILS_ENV: test
+      DATABASE_URL: postgresql://signalchord:signalchord@localhost:5432/signalchord_control_plane_test
+      SECRET_KEY_BASE: ci-secret-key-base
+      DISABLE_BOOTSNAP: 'true'
+      SIGNALCHORD_VERSION: 1.0.0
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4.4'
-      - run: find apps/control-plane -name '*.rb' -print0 | xargs -0 -n1 ruby -c
+      - run: bundle install --jobs 4 --retry 3
+      - run: bundle lock --add-platform x86_64-linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gemfile-lock
+          path: apps/control-plane/Gemfile.lock
+          if-no-files-found: error
+      - run: bin/rails db:prepare
+      - run: bundle exec rspec
+      - run: bin/rails zeitwerk:check
 
   schemas:
     runs-on: ubuntu-latest
@@ -130,7 +131,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: find scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
-      - run: docker compose config --quiet
+      - run: docker compose --profile slice config --quiet
       - name: Validate JSON documents
         run: find . -type f -name '*.json' -not -path './node_modules/*' -print0 | xargs -0 -n1 python3 -m json.tool >/dev/null
 
@@ -140,41 +141,55 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Scan repository history with Gitleaks
-        shell: bash
+      - name: Install Gitleaks
         run: |
-          docker run --rm \
-            -v "$PWD:/repo" \
-            ghcr.io/gitleaks/gitleaks:v8.30.1 \
-            git --redact --report-format=json \
-            --report-path=/repo/gitleaks-report.json --exit-code=1 /repo
-      - name: Upload redacted Gitleaks report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: gitleaks-report
-          path: gitleaks-report.json
-          if-no-files-found: error
+          curl --fail --silent --show-error --location \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+      - run: gitleaks git --redact --exit-code=1 .
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
-          format: json
-          output: trivy-report.json
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
-      - name: Upload Trivy report
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-report
-          path: trivy-report.json
-          if-no-files-found: error
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: [go, python, typescript, repository-quality]
+    needs: [typescript, go, python, rails, schemas, repository-quality]
     steps:
       - uses: actions/checkout@v4
-      - run: docker compose --profile slice build document-fetcher stream-normalizer nlp-worker velato-worker realtime-gateway web kafka-connect
+      - run: >-
+          docker compose --profile slice build
+          control-plane document-fetcher stream-normalizer realtime-gateway
+          nlp-worker entity-resolution claim-intelligence search-projector
+          alert-projector graph-query velato-api velato-worker web kafka-connect
+
+  end-to-end:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [docker-build, security]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start and verify SignalChord v1
+        run: |
+          set +e
+          ./scripts/dev-up.sh
+          status=$?
+          if [ "$status" -eq 0 ]; then ./scripts/smoke-test.sh; status=$?; fi
+          docker compose --profile slice ps > compose-ps.txt
+          docker compose --profile slice logs --no-color > compose.log
+          exit "$status"
+      - name: Upload Compose diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-diagnostics
+          path: |
+            compose-ps.txt
+            compose.log
+          if-no-files-found: warn
+      - if: always()
+        run: docker compose --profile slice down --volumes --remove-orphans
