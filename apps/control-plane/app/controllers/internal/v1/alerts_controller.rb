@@ -31,7 +31,13 @@ module Internal
       def authenticate_internal!
         expected = ENV.fetch("CONTROL_PLANE_INTERNAL_TOKEN", "signalchord-local-internal")
         actual = request.headers["X-SignalChord-Internal-Token"].to_s
-        head :unauthorized unless ActiveSupport::SecurityUtils.secure_compare(Digest::SHA256.hexdigest(actual), Digest::SHA256.hexdigest(expected))
+        valid = ActiveSupport::SecurityUtils.secure_compare(
+          Digest::SHA256.hexdigest(actual),
+          Digest::SHA256.hexdigest(expected)
+        )
+        return if valid
+
+        head :unauthorized
       end
     end
   end
