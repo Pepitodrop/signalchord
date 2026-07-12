@@ -26,12 +26,18 @@ jobs:
         with:
           node-version: 22.16.0
       - run: pnpm install --frozen-lockfile=false
-      - uses: actions/upload-artifact@v4
+      - name: Typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm typecheck 2>&1 | tee typescript-typecheck.log
+      - name: Upload TypeScript diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: pnpm-lock
-          path: pnpm-lock.yaml
-          if-no-files-found: error
-      - run: pnpm typecheck
+          name: typescript-diagnostics
+          path: typescript-typecheck.log
+          if-no-files-found: warn
       - run: pnpm test
       - run: pnpm build
 
@@ -47,8 +53,25 @@ jobs:
           go-version: '1.26.5'
           cache-dependency-path: services/go.mod
       - run: go mod tidy
+      - name: Upload generated Go checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-sum
+          path: services/go.sum
+          if-no-files-found: error
       - run: test -z "$(gofmt -l .)"
-      - run: go vet ./...
+      - name: Go vet
+        shell: bash
+        run: |
+          set -o pipefail
+          go vet ./... 2>&1 | tee go-vet.log
+      - name: Upload Go diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-diagnostics
+          path: services/go-vet.log
+          if-no-files-found: warn
       - run: go test -race ./...
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
 
