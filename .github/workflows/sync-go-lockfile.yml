@@ -1,0 +1,42 @@
+name: Synchronize Go Lockfile
+
+on:
+  push:
+    branches: [feat/foundation-vertical-slice]
+    paths:
+      - services/go.mod
+      - services/go.sum
+      - .github/workflows/sync-go-lockfile.yml
+
+permissions:
+  contents: write
+
+jobs:
+  synchronize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/foundation-vertical-slice
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: services/go.mod
+      - name: Regenerate checksum file
+        working-directory: services
+        run: |
+          rm -f go.sum
+          go mod tidy
+      - name: Commit synchronized checksum file
+        shell: bash
+        run: |
+          if git diff --quiet -- services/go.sum; then
+            echo 'Go checksum file is already synchronized.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add services/go.sum
+          git commit -m 'build(go): regenerate dependency checksums'
+          git push origin HEAD:feat/foundation-vertical-slice
