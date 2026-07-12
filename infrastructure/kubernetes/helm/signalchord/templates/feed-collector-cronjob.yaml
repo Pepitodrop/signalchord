@@ -1,0 +1,46 @@
+{{- if .Values.feedCollector.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: signalchord-feed-collector
+  labels:
+    app.kubernetes.io/name: feed-collector
+    app.kubernetes.io/part-of: signalchord
+spec:
+  schedule: {{ .Values.feedCollector.schedule | quote }}
+  concurrencyPolicy: {{ .Values.feedCollector.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.feedCollector.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.feedCollector.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: feed-collector
+            app.kubernetes.io/part-of: signalchord
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "signalchord.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: feed-collector
+              image: "{{ .Values.global.imageRegistry }}/{{ .Values.feedCollector.image }}:{{ .Values.global.imageTag }}"
+              imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+              env:
+                - {name: SIGNALCHORD_ENV, value: {{ .Values.global.environment | quote }}}
+                - {name: KAFKA_BROKERS, value: {{ .Values.global.config.kafkaBrokers | quote }}}
+                - {name: CONTROL_PLANE_URL, value: {{ .Values.global.config.controlPlaneUrl | quote }}}
+                - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ .Values.global.config.otelEndpoint | quote }}}
+              envFrom:
+                - secretRef: {name: {{ .Values.global.existingSecret }}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              resources:
+                {{- toYaml .Values.feedCollector.resources | nindent 16 }}
+{{- end }}

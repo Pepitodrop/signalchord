@@ -1,13 +1,20 @@
-{{- range $name, $service := .Values.services }}
-{{- if and $service.enabled $service.port }}
+{{- range $name, $workload := .Values.workloads }}
+{{- if and $workload.enabled $workload.service }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: signalchord-{{ $name }}
-  labels: {app.kubernetes.io/name: {{ $name }}, app.kubernetes.io/part-of: signalchord}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/part-of: signalchord
 spec:
-  selector: {app.kubernetes.io/name: {{ $name }}, app.kubernetes.io/part-of: signalchord}
-  ports: [{name: http, port: {{ $service.port }}, targetPort: http}]
+  selector:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/part-of: signalchord
+  ports:
+    - name: http
+      port: {{ $workload.service.port }}
+      targetPort: {{ $workload.service.targetPort }}
 {{- end }}
 {{- end }}
