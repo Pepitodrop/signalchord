@@ -45,7 +45,7 @@ C4Container
   Container(gateway, "Realtime gateway", "Go", "Tenant-aware SSE/WebSocket delivery")
   Container(ingestion, "Ingestion services", "Go", "Discover, fetch and normalize documents")
   Container(ai, "Intelligence services", "Python", "NLP, entity resolution, claim intelligence, graph analytics and Velato")
-  Container(kafka, "Kafka", "KRaft + Schema Registry + Connect", "Durable event backbone")
+  Container(kafka, "Kafka", "KRaft + Schema Registry", "Durable event backbone")
   ContainerDb(pg, "PostgreSQL", "SQL", "Transactional product state and outbox")
   ContainerDb(graph, "Neo4j", "Cypher + GDS", "Temporal knowledge graph")
   ContainerDb(search, "OpenSearch", "Search index", "Full-text and filtered retrieval")
@@ -60,7 +60,7 @@ C4Container
   Rel(rails, kafka, "Transactional outbox events")
   Rel(ingestion, kafka, "Produces/consumes versioned events")
   Rel(ai, kafka, "Produces/consumes versioned events")
-  Rel(kafka, graph, "Neo4j sink/source connectors")
+  Rel(ai, graph, "Allowlisted graph projection and approved queries")
   Rel(rails, graph, "Approved parameterized queries")
   Rel(rails, search, "Search API")
   Rel(ingestion, objects, "Writes immutable raw objects")
@@ -77,7 +77,7 @@ sequenceDiagram
   participant N as stream-normalizer
   participant P as nlp-pipeline
   participant E as entity-resolution
-  participant G as Neo4j sink
+  participant G as graph-projector
   participant V as velato-engine
   participant W as realtime-gateway
   R->>K: source.registered.v1 (outbox)
@@ -91,7 +91,7 @@ sequenceDiagram
   K->>E: entity.resolution-requested.v1
   E->>K: entity.resolved.v1
   K->>G: graph.mutation-requested.v1
-  G->>K: graph.mutation-completed.v1 / CDC-selected graph change
+  G->>K: graph.mutation-completed.v1
   K->>V: alert.policy-evaluation-requested.v1
   V->>K: alert.created.v1
   K->>W: alert.created.v1
@@ -115,7 +115,7 @@ sequenceDiagram
 - Consume-transform-produce stages use Kafka transactions when both input offsets and output records can be committed atomically.
 - External side effects use an inbox/idempotency ledger and retryable state machine.
 - Late events are accepted within per-topic windows and marked with `lateness_ms`; graph mutations compare `observed_at` and `valid_from` before superseding state.
-- Dead-letter records include original payload bytes, schema ID, exception class, stack fingerprint, attempts and replay eligibility.
+- Dead-letter records contain the minimum replay context permitted by the topic data classification, plus schema/version, error class, attempts and replay eligibility. Raw source bytes remain in object storage rather than being copied into every DLQ.
 
 ## Multi-tenant model
 
@@ -123,7 +123,7 @@ All product-owned records contain `tenant_id`. Shared public entities may exist 
 
 ## Operational deployment
 
-Local development uses Docker Compose. Production uses Helm/Kubernetes with separate node pools for Kafka, Neo4j, stateful datastores and stateless services. Terraform provisions network, identities, secrets, object storage, managed DNS and optional managed Kafka/Neo4j equivalents.
+Local development uses Docker Compose. The Helm chart is a staging/production scaffold for consolidated stateless application workloads. Production stateful dependencies are expected to be managed services or separately operated platforms with tested backup and restore procedures. Terraform is a starting point for network, identities, secrets, object storage and managed service integration; it is not a turnkey production environment.
 
 ## Unresolved architecture decisions
 

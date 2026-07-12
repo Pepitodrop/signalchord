@@ -10,7 +10,7 @@ Deliver architecture, ADRs, schemas, graph model, monorepo, CI, local infrastruc
 
 ## Phase 1 — Infrastructure and health
 
-Start Kafka KRaft, Schema Registry, Kafka Connect, Neo4j, PostgreSQL, Redis, MinIO, OpenSearch, OpenTelemetry Collector, Prometheus and Grafana with health checks and seed scripts.
+Start Kafka KRaft, Schema Registry, Neo4j, PostgreSQL, Redis, MinIO, OpenSearch, OpenTelemetry Collector, Prometheus and Grafana with health checks and seed scripts. Kafka Connect remains an optional compatibility profile.
 
 **Gate:** one command starts and resets the platform; topic and datastore health are verified.
 
@@ -64,4 +64,6 @@ Run tenant isolation, load, replay, failure recovery, backup/restore, source del
 
 ## Current state
 
-The foundation branch provides architecture, contracts, representative executable services and a vertical-slice code path. It is not yet a complete production deployment: full Rails generation, durable fetch/storage worker, actual Neo4j connector execution, production NLP models, push delivery and full end-to-end Compose verification remain subsequent gated work.
+The foundation branch contains the executable Rails control plane, Go ingestion/realtime services, deterministic Python intelligence workers, the first-party Neo4j graph projector, web/mobile clients, Docker Compose integration runtime and a consolidated Helm scaffold for stateless workloads.
+
+The repository remains public-alpha rather than production-approved. Production NLP evaluation, licensed source onboarding, immutable supply-chain promotion, external secrets/TLS, backup and restore drills, realistic load/failure testing, signed mobile delivery and final operational ownership remain gated work. See `docs/production-readiness.md`.
