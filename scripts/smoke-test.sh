@@ -4,7 +4,6 @@ TOKEN=${SIGNALCHORD_TOKEN:-signalchord-dev-token}
 API=${SIGNALCHORD_API_URL:-http://localhost:3000}
 
 curl -fsS http://localhost:8081/subjects >/dev/null
-curl -fsS http://localhost:8083/connectors >/dev/null
 curl -fsS http://localhost:9200/_cluster/health >/dev/null
 curl -fsS http://localhost:8088/healthz >/dev/null
 curl -fsS http://localhost:8090/healthz >/dev/null

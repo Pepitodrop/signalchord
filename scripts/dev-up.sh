@@ -13,12 +13,10 @@ sh ./scripts/configure-opensearch.sh
 
 # Start application services only after their durable dependencies are ready.
 docker compose --profile slice up -d --build --wait --wait-timeout 300 \
-  kafka-connect control-plane outbox-publisher document-fetcher stream-normalizer \
+  control-plane outbox-publisher document-fetcher stream-normalizer \
   nlp-worker entity-resolution claim-intelligence search-projector graph-query \
   graph-analytics-api graph-analytics-worker velato-api velato-worker \
-  alert-projector notification-worker realtime-gateway web
-
-./scripts/configure-connectors.sh
+  graph-projector alert-projector notification-worker realtime-gateway web
 
 docker compose --profile slice run --rm feed-collector
 printf '%s\n' "SignalChord v1: web http://localhost:5173 · API http://localhost:3000 · Graph query http://localhost:8090 · Analytics http://localhost:8092 · Neo4j http://localhost:7474 · Grafana http://localhost:3001"

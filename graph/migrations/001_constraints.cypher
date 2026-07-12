@@ -1,3 +1,4 @@
+CREATE CONSTRAINT graph_node_stable IF NOT EXISTS FOR (n:GraphNode) REQUIRE n.stable_id IS UNIQUE;
 CREATE CONSTRAINT article_stable IF NOT EXISTS FOR (n:Article) REQUIRE n.stable_id IS UNIQUE;
 CREATE CONSTRAINT document_stable IF NOT EXISTS FOR (n:Document) REQUIRE n.stable_id IS UNIQUE;
 CREATE CONSTRAINT source_stable IF NOT EXISTS FOR (n:Source) REQUIRE n.stable_id IS UNIQUE;
