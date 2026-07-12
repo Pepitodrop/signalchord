@@ -1,0 +1,64 @@
+global:
+  imageRegistry: ghcr.io/pepitodrop
+  imageTag: latest
+  imagePullPolicy: IfNotPresent
+  environment: production
+  otelEndpoint: http://otel-collector.observability.svc:4317
+  existingSecret: signalchord-runtime
+  config:
+    kafkaBrokers: kafka-bootstrap.kafka.svc:9093
+    schemaRegistryUrl: https://schema-registry.kafka.svc
+    minioEndpoint: object-storage.storage.svc:9000
+    minioBucket: raw-documents
+    redisUrl: redis://redis.cache.svc:6379/0
+    webOrigin: https://app.signalchord.example
+serviceAccount:
+  create: true
+  name: signalchord
+services:
+  document-fetcher:
+    enabled: true
+    image: signalchord-document-fetcher
+    replicas: 2
+    port: null
+    command: []
+  stream-normalizer:
+    enabled: true
+    image: signalchord-stream-normalizer
+    replicas: 2
+    port: null
+    command: []
+  nlp-worker:
+    enabled: true
+    image: signalchord-python
+    replicas: 2
+    port: null
+    command: [python, worker.py]
+    workingDir: /workspace/services/nlp-pipeline
+  velato-worker:
+    enabled: true
+    image: signalchord-python
+    replicas: 2
+    port: null
+    command: [python, worker.py]
+    workingDir: /workspace/services/velato-engine
+  realtime-gateway:
+    enabled: true
+    image: signalchord-realtime-gateway
+    replicas: 2
+    port: 8088
+    command: []
+  web:
+    enabled: true
+    image: signalchord-web
+    replicas: 2
+    port: 80
+    command: []
+resources:
+  requests: {cpu: 100m, memory: 128Mi}
+  limits: {cpu: "1", memory: 1Gi}
+networkPolicy:
+  enabled: true
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1

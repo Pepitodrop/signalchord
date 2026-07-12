@@ -1,0 +1,13 @@
+{{- range $name, $service := .Values.services }}
+{{- if and $service.enabled $service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: signalchord-{{ $name }}
+  labels: {app.kubernetes.io/name: {{ $name }}, app.kubernetes.io/part-of: signalchord}
+spec:
+  selector: {app.kubernetes.io/name: {{ $name }}, app.kubernetes.io/part-of: signalchord}
+  ports: [{name: http, port: {{ $service.port }}, targetPort: http}]
+{{- end }}
+{{- end }}
