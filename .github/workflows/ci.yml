@@ -58,6 +58,12 @@ jobs:
       - run: go mod tidy
       - name: Format Go sources for validation
         run: gofmt -w .
+      - name: Upload formatted Go sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: gofmt-sources
+          path: services/**/*.go
+          if-no-files-found: error
       - run: go vet ./...
       - run: go test -race ./...
 
