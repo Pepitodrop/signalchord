@@ -1,0 +1,338 @@
+name: signalchord
+
+x-app-environment: &app-environment
+  KAFKA_BROKERS: kafka:9092
+  SIGNALCHORD_TENANT_ID: tenant-demo
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: signalchord
+  MINIO_SECRET_KEY: signalchord-dev-secret
+  MINIO_BUCKET: raw-documents
+  MINIO_SECURE: "false"
+  REDIS_URL: redis://redis:6379/0
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.7.1
+    hostname: kafka
+    ports:
+      - "29092:29092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.7.1
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    depends_on:
+      kafka:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/subjects >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  kafka-connect:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/connect/Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
+      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: signalchord-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/usr/share/java/neo4j
+      CONNECT_CONFIG_PROVIDERS: file
+      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: org.apache.kafka.common.config.provider.FileConfigProvider
+    volumes:
+      - ./infrastructure/docker/connect/neo4j.properties:/run/secrets/neo4j.properties:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  neo4j:
+    image: neo4j:5.26-community
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/signalchord-dev
+      NEO4J_server_memory_heap_initial__size: 512m
+      NEO4J_server_memory_heap_max__size: 1G
+      NEO4J_server_memory_pagecache_size: 512m
+    volumes:
+      - neo4j-data:/data
+      - ./graph/migrations:/var/lib/neo4j/import/migrations:ro
+      - ./graph/fixtures:/var/lib/neo4j/import/fixtures:ro
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p signalchord-dev 'RETURN 1' >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 8s
+      retries: 30
+
+  postgres:
+    image: postgres:17.5-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: signalchord
+      POSTGRES_USER: signalchord
+      POSTGRES_PASSWORD: signalchord
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U signalchord -d signalchord"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7.4.4-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: signalchord
+      MINIO_ROOT_PASSWORD: signalchord-dev-secret
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      plugins.security.disabled: "true"
+      OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.128.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./infrastructure/monitoring/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./infrastructure/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: signalchord-dev
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      - prometheus
+
+  sample-source:
+    image: nginx:1.28.0-alpine
+    profiles: ["slice"]
+    volumes:
+      - ./infrastructure/docker/sample-source:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/feed.xml >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  document-fetcher:
+    profiles: ["slice"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/go-service.Dockerfile
+      args:
+        TARGET: ./document-fetcher/cmd
+    environment:
+      <<: *app-environment
+      FETCH_PRIVATE_HOST_ALLOWLIST: sample-source
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  stream-normalizer:
+    profiles: ["slice"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/go-service.Dockerfile
+      args:
+        TARGET: ./stream-normalizer/cmd
+    environment:
+      <<: *app-environment
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nlp-worker:
+    profiles: ["slice"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/python-service.Dockerfile
+    working_dir: /workspace/services/nlp-pipeline
+    command: ["python", "worker.py"]
+    environment:
+      <<: *app-environment
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
+  velato-worker:
+    profiles: ["slice"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/python-service.Dockerfile
+    working_dir: /workspace/services/velato-engine
+    command: ["python", "worker.py"]
+    environment:
+      <<: *app-environment
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  realtime-gateway:
+    profiles: ["slice"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/go-service.Dockerfile
+      args:
+        TARGET: ./realtime-gateway
+    environment:
+      <<: *app-environment
+    ports:
+      - "8088:8088"
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    profiles: ["slice"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.Dockerfile
+    ports:
+      - "5173:80"
+
+  feed-collector:
+    profiles: ["slice"]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/go-service.Dockerfile
+      args:
+        TARGET: ./feed-collector
+    environment:
+      <<: *app-environment
+      FEED_URL: http://sample-source/feed.xml
+      SOURCE_ID: sample-rss
+      FETCH_POLICY_ID: local-fixture-only
+    depends_on:
+      kafka:
+        condition: service_healthy
+      sample-source:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  kafka-data:
+  neo4j-data:
+  postgres-data:
+  redis-data:
+  minio-data:
+  opensearch-data:
+  prometheus-data:
+  grafana-data:

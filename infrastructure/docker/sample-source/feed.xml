@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>SignalChord permitted fixture feed</title>
+    <link>http://sample-source/</link>
+    <description>Deterministic local test content; not a third-party source.</description>
+    <item>
+      <guid isPermaLink="true">http://sample-source/article-acme.html</guid>
+      <link>http://sample-source/article-acme.html</link>
+      <title>Acme Corporation announces Northstar Labs partnership</title>
+      <pubDate>Sun, 12 Jul 2026 12:00:00 GMT</pubDate>
+    </item>
+  </channel>
+</rss>

@@ -1,0 +1,12 @@
+FROM golang:1.23.10-alpine AS build
+ARG TARGET
+WORKDIR /workspace/services
+COPY services/go.mod ./
+RUN go mod download
+COPY services/ ./
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/service ${TARGET}
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/service /service
+USER nonroot:nonroot
+ENTRYPOINT ["/service"]
