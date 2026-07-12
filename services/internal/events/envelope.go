@@ -37,25 +37,26 @@ type DocumentDiscovered struct {
 }
 
 type DocumentFetched struct {
-	DocumentID string            `json:"document_id"`
-	SourceID   string            `json:"source_id"`
-	FinalURL   string            `json:"final_url"`
-	ContentHash string           `json:"content_hash"`
-	ObjectURI  string            `json:"object_uri"`
-	MediaType  string            `json:"media_type"`
-	Charset    string            `json:"charset"`
-	HTTPStatus int               `json:"http_status"`
+	DocumentID  string            `json:"document_id"`
+	SourceID    string            `json:"source_id"`
+	FinalURL    string            `json:"final_url"`
+	ContentHash string            `json:"content_hash"`
+	ObjectURI   string            `json:"object_uri"`
+	MediaType   string            `json:"media_type"`
+	Charset     string            `json:"charset"`
+	HTTPStatus  int               `json:"http_status"`
 	HTTPHeaders map[string]string `json:"http_headers"`
 }
 
 type NormalizedDocument struct {
-	DocumentID        string     `json:"document_id"`
-	CanonicalURL      string     `json:"canonical_url"`
-	Title             string     `json:"title"`
-	CleanTextObjectURI string    `json:"clean_text_object_uri"`
-	PublishedAt       *time.Time `json:"published_at,omitempty"`
-	LanguageHint      string     `json:"language_hint,omitempty"`
-	ContentHash       string     `json:"content_hash"`
+	SourceID           string     `json:"source_id"`
+	DocumentID         string     `json:"document_id"`
+	CanonicalURL       string     `json:"canonical_url"`
+	Title              string     `json:"title"`
+	CleanTextObjectURI string     `json:"clean_text_object_uri"`
+	PublishedAt        *time.Time `json:"published_at,omitempty"`
+	LanguageHint       string     `json:"language_hint,omitempty"`
+	ContentHash        string     `json:"content_hash"`
 }
 
 type DuplicateDetected struct {

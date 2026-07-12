@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,9 +15,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/IBM/sarama"
 	"github.com/Pepitodrop/signalchord/services/internal/events"
 	"github.com/Pepitodrop/signalchord/services/internal/kafkautil"
-	"github.com/IBM/sarama"
 )
 
 type subscription struct {
@@ -29,6 +30,10 @@ type broker struct {
 	mu          sync.RWMutex
 	nextID      uint64
 	subscribers map[string]map[uint64]chan []byte
+}
+
+type tokenIntrospection struct {
+	OrganizationID string `json:"organization_id"`
 }
 
 func newBroker() *broker {
@@ -126,12 +131,18 @@ func main() {
 
 func sseHandler(logger *slog.Logger, stream *broker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tenant := r.Header.Get("X-Tenant-ID")
-		if tenant == "" && env("SIGNALCHORD_ENV", "development") == "development" {
-			tenant = r.URL.Query().Get("tenant_id")
+		setCORS(w, r)
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
-		if tenant == "" {
-			http.Error(w, "missing authorized tenant", http.StatusUnauthorized)
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		tenant, err := authorizedTenant(r)
+		if err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		flusher, ok := w.(http.Flusher)
@@ -142,9 +153,6 @@ func sseHandler(logger *slog.Logger, stream *broker) http.HandlerFunc {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache, no-transform")
 		w.Header().Set("Connection", "keep-alive")
-		if origin := env("WEB_ORIGIN", "http://localhost:5173"); r.Header.Get("Origin") == origin {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-		}
 		sub := stream.subscribe(tenant)
 		defer stream.unsubscribe(sub)
 		logger.Info("realtime subscriber connected", "tenant_id", tenant, "subscriber_id", sub.id)
@@ -165,6 +173,56 @@ func sseHandler(logger *slog.Logger, stream *broker) http.HandlerFunc {
 			}
 		}
 	}
+}
+
+func authorizedTenant(r *http.Request) (string, error) {
+	authorization := r.Header.Get("Authorization")
+	if authorization == "" && env("SIGNALCHORD_ENV", "development") == "development" {
+		if tenant := r.URL.Query().Get("tenant_id"); tenant != "" {
+			return tenant, nil
+		}
+	}
+	if !strings.HasPrefix(authorization, "Bearer ") {
+		return "", errors.New("missing bearer token")
+	}
+	base := strings.TrimRight(env("CONTROL_PLANE_URL", "http://control-plane:3000"), "/")
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, base+"/internal/v1/token", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", authorization)
+	req.Header.Set("X-SignalChord-Internal-Token", env("CONTROL_PLANE_INTERNAL_TOKEN", "signalchord-local-internal"))
+	client := &http.Client{Timeout: 5 * time.Second}
+	response, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("introspection returned %d", response.StatusCode)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	if err != nil {
+		return "", err
+	}
+	var result tokenIntrospection
+	if err := json.Unmarshal(body, &result); err != nil {
+		return "", err
+	}
+	if result.OrganizationID == "" {
+		return "", errors.New("introspection missing organization")
+	}
+	return result.OrganizationID, nil
+}
+
+func setCORS(w http.ResponseWriter, r *http.Request) {
+	allowed := env("WEB_ORIGIN", "http://localhost:5173")
+	if r.Header.Get("Origin") == allowed {
+		w.Header().Set("Access-Control-Allow-Origin", allowed)
+		w.Header().Set("Vary", "Origin")
+	}
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 }
 
 func securityHeaders(next http.Handler) http.Handler {

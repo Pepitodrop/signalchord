@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/IBM/sarama"
 	"github.com/Pepitodrop/signalchord/services/internal/events"
 	"github.com/Pepitodrop/signalchord/services/internal/kafkautil"
 	streamnormalizer "github.com/Pepitodrop/signalchord/services/stream-normalizer"
-	"github.com/IBM/sarama"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/redis/go-redis/v9"
@@ -98,12 +98,12 @@ func (a *app) handle(ctx context.Context, message *sarama.ConsumerMessage) error
 	if err != nil {
 		return err
 	}
-	payload := events.NormalizedDocument{DocumentID: source.Payload.DocumentID, CanonicalURL: canonicalURL, Title: title, CleanTextObjectURI: "s3://" + a.bucket + "/" + cleanKey, ContentHash: source.Payload.ContentHash}
+	payload := events.NormalizedDocument{SourceID: source.Payload.SourceID, DocumentID: source.Payload.DocumentID, CanonicalURL: canonicalURL, Title: title, CleanTextObjectURI: "s3://" + a.bucket + "/" + cleanKey, ContentHash: source.Payload.ContentHash}
 	normalized := events.NewEnvelope("document.normalized.v1", source.TenantID, source.CorrelationID, source.EventID, "stream-normalizer", "normalization", "normalized:"+source.Payload.DocumentID, source.OccurredAt, payload)
 	if err := a.producer.PublishJSON(ctx, "document.normalized.v1", source.Payload.DocumentID, normalized); err != nil {
 		return err
 	}
-	nlpPayload := map[string]any{"document_id": source.Payload.DocumentID, "clean_text_object_uri": payload.CleanTextObjectURI, "language_hint": payload.LanguageHint, "title": title, "canonical_url": canonicalURL}
+	nlpPayload := map[string]any{"document_id": source.Payload.DocumentID, "source_id": source.Payload.SourceID, "clean_text_object_uri": payload.CleanTextObjectURI, "language_hint": payload.LanguageHint, "title": title, "canonical_url": canonicalURL}
 	nlpRequest := events.NewEnvelope("document.nlp-requested.v1", source.TenantID, source.CorrelationID, normalized.EventID, "stream-normalizer", "nlp-request", "nlp:"+source.Payload.DocumentID+":default", source.OccurredAt, nlpPayload)
 	if err := a.producer.PublishJSON(ctx, "document.nlp-requested.v1", source.Payload.DocumentID, nlpRequest); err != nil {
 		return err
@@ -154,6 +154,22 @@ func extractHTML(body []byte) (string, string, error) {
 	return title, strings.Join(strings.Fields(builder.String()), " "), nil
 }
 
-func env(key, fallback string) string { if value := os.Getenv(key); value != "" { return value }; return fallback }
-func envBool(key string, fallback bool) bool { value, err := strconv.ParseBool(os.Getenv(key)); if err != nil { return fallback }; return value }
-func fatal(logger *slog.Logger, action string, err error) { if err != nil { logger.Error(action, "error", err); os.Exit(1) } }
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+func envBool(key string, fallback bool) bool {
+	value, err := strconv.ParseBool(os.Getenv(key))
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+func fatal(logger *slog.Logger, action string, err error) {
+	if err != nil {
+		logger.Error(action, "error", err)
+		os.Exit(1)
+	}
+}

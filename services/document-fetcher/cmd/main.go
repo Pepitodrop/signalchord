@@ -19,10 +19,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/IBM/sarama"
 	documentfetcher "github.com/Pepitodrop/signalchord/services/document-fetcher"
 	"github.com/Pepitodrop/signalchord/services/internal/events"
 	"github.com/Pepitodrop/signalchord/services/internal/kafkautil"
-	"github.com/IBM/sarama"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
@@ -72,7 +72,7 @@ func (a *app) handle(ctx context.Context, message *sarama.ConsumerMessage) error
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", env("SIGNALCHORD_USER_AGENT", "SignalChord/0.1 (+https://signalchord.example/source-policy)"))
+	req.Header.Set("User-Agent", env("SIGNALCHORD_USER_AGENT", "SignalChord/1.0 (+https://signalchord.example/source-policy)"))
 	response, err := a.client.Do(req)
 	if err != nil {
 		return err
@@ -144,6 +144,24 @@ func safeHeaders(headers http.Header) map[string]string {
 	return result
 }
 
-func env(key, fallback string) string { if value := os.Getenv(key); value != "" { return value }; return fallback }
-func envBool(key string, fallback bool) bool { value, err := strconv.ParseBool(os.Getenv(key)); if err != nil { return fallback }; return value }
-func fatal(logger *slog.Logger, action string, err error) { if err != nil { logger.Error(action, "error", err); os.Exit(1) } }
+func env(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
+}
+
+func envBool(key string, fallback bool) bool {
+	value, err := strconv.ParseBool(os.Getenv(key))
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func fatal(logger *slog.Logger, action string, err error) {
+	if err != nil {
+		logger.Error(action, "error", err)
+		os.Exit(1)
+	}
+}

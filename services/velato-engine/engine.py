@@ -78,9 +78,7 @@ INTERVAL_OP = {
 }
 
 
-def parse_midi(
-    data: bytes, max_bytes: int = 128_000, max_notes: int = 1024
-) -> list[MidiNote]:
+def parse_midi(data: bytes, max_bytes: int = 128_000, max_notes: int = 1024) -> list[MidiNote]:
     if len(data) > max_bytes:
         raise ValueError("MIDI exceeds byte limit")
     midi = mido.MidiFile(file=BytesIO(data))
@@ -177,9 +175,7 @@ def execute(
             suppressed = bool(pop())
         if len(stack) > max_stack:
             raise ValueError("stack limit exceeded")
-    digest = sha256(
-        json.dumps(trace, sort_keys=True, separators=(",", ":")).encode()
-    ).hexdigest()
+    digest = sha256(json.dumps(trace, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return PolicyResult(
         alert_score=score,
         severity_code=severity,
@@ -191,7 +187,6 @@ def execute(
 
 
 def default_policy_ir() -> list[Instruction]:
-    """Conventional fallback equivalent to the checked-in default MIDI policy."""
     return [
         Instruction(Op.LOAD_INPUT, "watchlist_match"),
         Instruction(Op.PUSH_CONST, 40),
@@ -217,3 +212,19 @@ def default_policy_ir() -> list[Instruction]:
         Instruction(Op.STORE_SUPPRESS),
         Instruction(Op.HALT),
     ]
+
+
+def serialize_ir(ir: list[Instruction]) -> list[dict[str, object]]:
+    return [{"op": instruction.op.value, "arg": instruction.arg} for instruction in ir]
+
+
+def ir_sha256(ir: list[Instruction]) -> str:
+    return sha256(json.dumps(serialize_ir(ir), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def decompile(ir: list[Instruction]) -> str:
+    lines: list[str] = []
+    for index, instruction in enumerate(ir):
+        operand = "" if instruction.arg is None else f" {instruction.arg}"
+        lines.append(f"{index:03d}: {instruction.op.value}{operand}")
+    return "\n".join(lines)
