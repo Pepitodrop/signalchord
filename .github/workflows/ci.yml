@@ -188,12 +188,22 @@ jobs:
     needs: [typescript, go, python, rails, schemas, repository-quality]
     steps:
       - uses: actions/checkout@v4
-      - run: >-
-          docker compose --profile slice build
-          control-plane document-fetcher stream-normalizer realtime-gateway
-          nlp-worker entity-resolution claim-intelligence search-projector
-          alert-projector notification-worker graph-query graph-analytics-api graph-analytics-worker
-          velato-api velato-worker web kafka-connect
+      - name: Build service images
+        shell: bash
+        run: |
+          set -o pipefail
+          docker compose --profile slice build \
+            control-plane document-fetcher stream-normalizer realtime-gateway \
+            nlp-worker entity-resolution claim-intelligence search-projector \
+            alert-projector notification-worker graph-query graph-analytics-api graph-analytics-worker \
+            velato-api velato-worker web kafka-connect 2>&1 | tee docker-build.log
+      - name: Upload Docker build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-build-diagnostics
+          path: docker-build.log
+          if-no-files-found: warn
 
   end-to-end:
     runs-on: ubuntu-latest
