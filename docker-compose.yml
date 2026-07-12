@@ -87,7 +87,7 @@ services:
       NEO4J_server_memory_heap_initial__size: 512m
       NEO4J_server_memory_heap_max__size: 1G
       NEO4J_server_memory_pagecache_size: 512m
-    volumes: ["neo4j-data:/data", "./graph/migrations:/var/lib/neo4j/import/migrations:ro", "./graph/fixtures:/var/lib/neo4j/import/fixtures:ro"]
+    volumes: ["neo4j-data:/data"]
     healthcheck:
       test: ["CMD-SHELL", "cypher-shell -u neo4j -p signalchord-dev 'RETURN 1' >/dev/null 2>&1"]
       interval: 10s
@@ -127,7 +127,11 @@ services:
   opensearch:
     image: opensearchproject/opensearch:2.19.1
     ports: ["9200:9200"]
-    environment: {discovery.type: single-node, plugins.security.disabled: "true", OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"}
+    environment:
+      discovery.type: single-node
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
     volumes: ["opensearch-data:/usr/share/opensearch/data"]
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
