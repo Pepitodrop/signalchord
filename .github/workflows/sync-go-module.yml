@@ -1,0 +1,40 @@
+name: Synchronize Go Module Metadata
+
+on:
+  push:
+    branches: [feat/foundation-vertical-slice]
+    paths:
+      - services/go.mod
+      - services/go.sum
+      - .github/workflows/sync-go-module.yml
+
+permissions:
+  contents: write
+
+jobs:
+  synchronize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/foundation-vertical-slice
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.5'
+          cache-dependency-path: services/go.sum
+      - name: Synchronize module metadata
+        working-directory: services
+        run: go mod tidy
+      - name: Commit synchronized module metadata
+        shell: bash
+        run: |
+          if git diff --quiet -- services/go.mod services/go.sum; then
+            echo 'Go module metadata is already synchronized.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add services/go.mod services/go.sum
+          git commit -m 'build(go): synchronize module metadata'
+          git push origin HEAD:feat/foundation-vertical-slice
