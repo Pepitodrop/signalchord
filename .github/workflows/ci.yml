@@ -28,7 +28,21 @@ jobs:
       - run: pnpm install --frozen-lockfile=false
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm build
+      - name: Build TypeScript applications
+        shell: bash
+        run: |
+          set +e
+          pnpm build > ts-build.log 2>&1
+          status=$?
+          tail -n 120 ts-build.log
+          exit "$status"
+      - name: Upload TypeScript build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ts-build-log
+          path: ts-build.log
+          if-no-files-found: error
 
   go:
     runs-on: ubuntu-latest
@@ -107,9 +121,35 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Scan repository history with Gitleaks
+        shell: bash
+        run: |
+          set +e
+          docker run --rm \
+            -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git --repo-path=/repo --redact --report-format=json \
+            --report-path=/repo/gitleaks-report.json --exit-code=1
+          status=$?
+          if [ -f gitleaks-report.json ]; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('gitleaks-report.json')
+          findings = json.loads(path.read_text()) if path.stat().st_size else []
+          print(f'Gitleaks findings: {len(findings)}')
+          for finding in findings:
+              print(f"- {finding.get('RuleID')} {finding.get('File')}:{finding.get('StartLine')}")
+          PY
+          fi
+          exit "$status"
+      - name: Upload redacted Gitleaks report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks-report.json
+          if-no-files-found: error
       - uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
