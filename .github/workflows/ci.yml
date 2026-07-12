@@ -10,6 +10,9 @@ permissions:
   contents: read
   security-events: write
 
+env:
+  COMPOSE_FILE: docker-compose.yml:docker-compose.override.yml:docker-compose.projector.yml
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -26,6 +29,12 @@ jobs:
         with:
           node-version: 22.16.0
       - run: pnpm install --frozen-lockfile=false
+      - name: Upload generated pnpm lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: pnpm-lock-generated
+          path: pnpm-lock.yaml
+          if-no-files-found: error
       - name: Typecheck
         shell: bash
         run: |
@@ -85,7 +94,7 @@ jobs:
       - run: >-
           pytest -q
           services/nlp-pipeline services/entity-resolution services/claim-intelligence
-          services/velato-engine services/notification-worker
+          services/velato-engine services/notification-worker services/graph-projector
       - run: ruff check --select E9,F63,F7,F82 services
 
   rails:
@@ -116,13 +125,9 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.4.4'
+      - run: bundle config set frozen true
       - run: bundle install --jobs 4 --retry 3
-      - run: bundle lock --add-platform x86_64-linux
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gemfile-lock
-          path: apps/control-plane/Gemfile.lock
-          if-no-files-found: error
+      - run: git diff --exit-code -- Gemfile.lock
       - run: bin/rails db:prepare
       - run: bundle exec rspec
       - run: bin/rails zeitwerk:check
@@ -155,6 +160,14 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: find scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
       - run: docker compose --profile slice config --quiet
+      - uses: azure/setup-helm@v4
+      - name: Validate Helm chart
+        run: |
+          helm lint infrastructure/kubernetes/helm/signalchord
+          helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --set global.imageTag=sha-ci \
+            --set global.existingSecret=signalchord-runtime >/tmp/signalchord-manifests.yaml
+          test -s /tmp/signalchord-manifests.yaml
       - name: Validate JSON documents
         run: find . -type f -name '*.json' -not -path './node_modules/*' -print0 | xargs -0 -n1 python3 -m json.tool >/dev/null
 
@@ -201,8 +214,8 @@ jobs:
           docker compose --profile slice build \
             control-plane document-fetcher stream-normalizer realtime-gateway \
             nlp-worker entity-resolution claim-intelligence search-projector \
-            alert-projector notification-worker graph-query graph-analytics-api graph-analytics-worker \
-            velato-api velato-worker web kafka-connect 2>&1 | tee docker-build.log
+            alert-projector notification-worker graph-projector graph-query graph-analytics-api graph-analytics-worker \
+            velato-api velato-worker web 2>&1 | tee docker-build.log
       - name: Upload Docker build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
