@@ -53,12 +53,8 @@ jobs:
           go-version: '1.26.5'
           cache-dependency-path: services/go.mod
       - run: go mod tidy
-      - name: Upload generated Go checksum
-        uses: actions/upload-artifact@v4
-        with:
-          name: go-sum
-          path: services/go.sum
-          if-no-files-found: error
+      - name: Verify Go dependency metadata is committed
+        run: git diff --exit-code -- go.mod go.sum
       - run: test -z "$(gofmt -l .)"
       - name: Go vet
         shell: bash
@@ -175,13 +171,23 @@ jobs:
             | tar -xz gitleaks
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
       - run: gitleaks git --redact --exit-code=1 .
-      - uses: aquasecurity/trivy-action@v0.36.0
+      - name: Scan filesystem with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
+          format: table
+          output: trivy-fs.txt
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
+      - name: Upload Trivy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-diagnostics
+          path: trivy-fs.txt
+          if-no-files-found: warn
 
   docker-build:
     runs-on: ubuntu-latest
