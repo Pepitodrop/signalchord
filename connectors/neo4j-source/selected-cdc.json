@@ -1,0 +1,13 @@
+{
+  "name":"signalchord-neo4j-cdc-source",
+  "config":{
+    "connector.class":"org.neo4j.connectors.kafka.source.Neo4jConnector",
+    "neo4j.server.uri":"${file:/run/secrets/neo4j:uri}",
+    "neo4j.authentication.basic.username":"${file:/run/secrets/neo4j:username}",
+    "neo4j.authentication.basic.password":"${file:/run/secrets/neo4j:password}",
+    "neo4j.source-strategy":"CDC",
+    "neo4j.start-from":"NOW",
+    "neo4j.cdc.topic.graph.mutation-completed.v1.patterns":"(:Alert),(:Claim),(:Evidence),()-[:CONTRADICTS|CORROBORATES|TRIGGERED]->()",
+    "topic":"graph.mutation-completed.v1"
+  }
+}

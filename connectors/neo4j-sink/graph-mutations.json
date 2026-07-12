@@ -1,0 +1,18 @@
+{
+  "name":"signalchord-neo4j-sink",
+  "config":{
+    "connector.class":"org.neo4j.connectors.kafka.sink.Neo4jConnector",
+    "topics":"graph.mutation-requested.v1",
+    "neo4j.server.uri":"${file:/run/secrets/neo4j:uri}",
+    "neo4j.authentication.basic.username":"${file:/run/secrets/neo4j:username}",
+    "neo4j.authentication.basic.password":"${file:/run/secrets/neo4j:password}",
+    "neo4j.topic.cypher.graph.mutation-requested.v1":"WITH event.value.payload AS p CALL apoc.do.case([p.entity_type = 'Document', 'MERGE (n:Document {stable_id:p.properties.stable_id}) SET n += p.properties RETURN n'], 'RETURN null AS n', {p:p}) YIELD value RETURN value",
+    "errors.tolerance":"all",
+    "errors.deadletterqueue.topic.name":"graph.mutation-requested.v1.dlq",
+    "errors.deadletterqueue.context.headers.enable":"true",
+    "errors.log.enable":"true",
+    "errors.log.include.messages":"false",
+    "max.retries":"10",
+    "retry.backoff.ms":"1000"
+  }
+}

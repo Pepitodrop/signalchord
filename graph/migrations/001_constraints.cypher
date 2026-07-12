@@ -1,0 +1,17 @@
+CREATE CONSTRAINT article_stable IF NOT EXISTS FOR (n:Article) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT document_stable IF NOT EXISTS FOR (n:Document) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT source_stable IF NOT EXISTS FOR (n:Source) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT publisher_stable IF NOT EXISTS FOR (n:Publisher) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT person_stable IF NOT EXISTS FOR (n:Person) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT organization_stable IF NOT EXISTS FOR (n:Organization) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT company_stable IF NOT EXISTS FOR (n:Company) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT location_stable IF NOT EXISTS FOR (n:Location) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT event_stable IF NOT EXISTS FOR (n:Event) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT claim_stable IF NOT EXISTS FOR (n:Claim) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT topic_stable IF NOT EXISTS FOR (n:Topic) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT evidence_stable IF NOT EXISTS FOR (n:Evidence) REQUIRE n.stable_id IS UNIQUE;
+CREATE CONSTRAINT alert_tenant_stable IF NOT EXISTS FOR (n:Alert) REQUIRE (n.tenant_id,n.stable_id) IS UNIQUE;
+CREATE INDEX entity_name IF NOT EXISTS FOR (n:Organization) ON (n.normalized_name);
+CREATE INDEX claim_observed IF NOT EXISTS FOR (n:Claim) ON (n.observed_at);
+CREATE INDEX temporal_validity IF NOT EXISTS FOR (n:Event) ON (n.valid_from,n.valid_to);
+CREATE INDEX tenant_lookup IF NOT EXISTS FOR (n:Investigation) ON (n.tenant_id);
