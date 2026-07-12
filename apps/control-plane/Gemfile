@@ -13,7 +13,10 @@ gem "redis", "~> 5.4"
 gem "sidekiq", "~> 8.0"
 gem "ruby-kafka", "~> 1.5"
 gem "opentelemetry-sdk", "~> 1.7"
-gem "opentelemetry-instrumentation-all", "~> 0.80"
+gem "opentelemetry-instrumentation-rails", "~> 0.42"
+gem "opentelemetry-instrumentation-pg", "~> 0.36"
+gem "opentelemetry-instrumentation-redis", "~> 0.29"
+gem "opentelemetry-instrumentation-ruby_kafka", "~> 0.25"
 
 group :development, :test do
   gem "rspec-rails", "~> 7.1"
