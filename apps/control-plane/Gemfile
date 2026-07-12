@@ -1,15 +1,20 @@
 source "https://rubygems.org"
 ruby "3.4.4"
+
 gem "rails", "~> 8.0"
 gem "pg", "~> 1.5"
 gem "puma", ">= 6.0"
-gem "sidekiq", "~> 8.0"
-gem "redis", "~> 5.4"
-gem "pundit", "~> 2.5"
+gem "bootsnap", require: false
+gem "bcrypt", "~> 3.1"
+gem "rack-cors", "~> 2.0"
 gem "rack-attack", "~> 6.8"
+gem "pundit", "~> 2.5"
+gem "redis", "~> 5.4"
+gem "sidekiq", "~> 8.0"
 gem "ruby-kafka", "~> 1.5"
 gem "opentelemetry-sdk", "~> 1.7"
 gem "opentelemetry-instrumentation-all", "~> 0.80"
+
 group :development, :test do
   gem "rspec-rails", "~> 7.1"
   gem "rubocop", require: false
