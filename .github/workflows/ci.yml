@@ -128,8 +128,8 @@ jobs:
           docker run --rm \
             -v "$PWD:/repo" \
             ghcr.io/gitleaks/gitleaks:v8.30.1 \
-            git --repo-path=/repo --redact --report-format=json \
-            --report-path=/repo/gitleaks-report.json --exit-code=1
+            git --redact --report-format=json \
+            --report-path=/repo/gitleaks-report.json --exit-code=1 /repo
           status=$?
           if [ -f gitleaks-report.json ]; then
             python3 - <<'PY'
