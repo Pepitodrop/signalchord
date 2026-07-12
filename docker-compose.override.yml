@@ -14,6 +14,7 @@ x-v1-environment: &v1-environment
   NEO4J_PASSWORD: signalchord-dev
   CONTROL_PLANE_URL: http://control-plane:3000
   CONTROL_PLANE_INTERNAL_TOKEN: signalchord-local-internal
+  NOTIFICATION_TOKEN_ENCRYPTION_KEY: signalchord-local-notification-key
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
 
 services:
@@ -99,6 +100,16 @@ services:
     profiles: [slice]
     build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
     working_dir: /workspace/services/alert-projector
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on:
+      kafka: {condition: service_healthy}
+      control-plane: {condition: service_healthy}
+
+  notification-worker:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/notification-worker
     command: ["python", "worker.py"]
     environment: {<<: *v1-environment}
     depends_on:

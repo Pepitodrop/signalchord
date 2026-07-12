@@ -19,8 +19,9 @@ export interface SearchHit { index: string; id: string; score: number; source: R
 export interface EntityRecord { stable_id: string; display_name?: string; entity_type?: string; confidence?: number; status?: string; [key: string]: unknown; }
 export interface GraphNode { stable_id: string; label?: string; display_name?: string; title?: string; [key: string]: unknown; }
 export interface GraphRelationship { stable_id?: string; type: string; source: string; target: string; confidence?: number; [key: string]: unknown; }
-export interface GraphResponse { nodes: GraphNode[]; relationships: GraphRelationship[]; }
+export interface GraphResponse { nodes: GraphNode[]; relationships: GraphRelationship[]; truncated?: boolean; }
 export interface TimelineItem { related: Record<string, unknown>; relationship_type: string; relationship: Record<string, unknown>; observed_at?: string; }
+export interface NotificationEndpointRecord { id: string; platform: string; enabled: boolean; last_seen_at?: string; created_at: string; }
 
 export class SignalChordApiError extends Error {
   constructor(public status: number, public payload: unknown) {
@@ -50,6 +51,9 @@ export class SignalChordClient {
   entity(stableId: string) { return this.request<EntityRecord>(`/api/v1/entities/${encodeURIComponent(stableId)}`); }
   entityTimeline(stableId: string) { return this.request<{items: TimelineItem[]}>(`/api/v1/entities/${encodeURIComponent(stableId)}/timeline`); }
   entityGraph(stableId: string) { return this.request<GraphResponse>(`/api/v1/entities/${encodeURIComponent(stableId)}/graph`); }
+  notificationEndpoints() { return this.request<NotificationEndpointRecord[]>("/api/v1/notification_endpoints"); }
+  registerNotificationEndpoint(platform: string, token: string) { return this.request<NotificationEndpointRecord>("/api/v1/notification_endpoints", {method: "POST", body: JSON.stringify({platform, token})}); }
+  removeNotificationEndpoint(id: string) { return this.request<null>(`/api/v1/notification_endpoints/${encodeURIComponent(id)}`, {method: "DELETE"}); }
 
   private async request<T>(path: string, init: RequestInit = {}, authenticated = true): Promise<T> {
     const headers = new Headers(init.headers);

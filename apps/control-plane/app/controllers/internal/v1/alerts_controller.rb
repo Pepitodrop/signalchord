@@ -21,12 +21,32 @@ module Internal
         )
         created = alert.new_record?
         alert.save!
+        enqueue_notification(event, alert) if created && !alert.suppressed?
         render json: alert, status: created ? :created : :ok
       rescue KeyError => error
         render json: { error: "invalid_event", detail: error.message }, status: :unprocessable_entity
       end
 
       private
+
+      def enqueue_notification(event, alert)
+        OutboxEvent.enqueue!(
+          organization: alert.organization,
+          topic: "notification.requested.v1",
+          partition_key: alert.organization_id,
+          event_type: "notification.requested.v1",
+          correlation_id: event.fetch("correlation_id"),
+          causation_id: event.fetch("event_id"),
+          payload: {
+            alert_id: alert.id,
+            stable_alert_id: alert.stable_id,
+            title: alert.title,
+            summary: alert.summary,
+            severity_code: alert.severity_code,
+            routing_code: alert.routing_code
+          }
+        )
+      end
 
       def authenticate_internal!
         expected = ENV.fetch("CONTROL_PLANE_INTERNAL_TOKEN", "signalchord-local-internal")

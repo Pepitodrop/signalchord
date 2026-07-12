@@ -8,6 +8,8 @@ class Organization < ApplicationRecord
   has_many :alerts, dependent: :destroy
   has_many :investigations, dependent: :destroy
   has_many :audit_events, dependent: :destroy
+  has_many :notification_endpoints, dependent: :destroy
+  has_many :notification_deliveries, dependent: :destroy
 
   validates :name, presence: true, length: { maximum: 200 }
   validates :slug, presence: true, uniqueness: true, format: { with: /\A[a-z0-9][a-z0-9-]*\z/ }

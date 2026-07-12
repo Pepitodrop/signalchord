@@ -5,6 +5,7 @@ Rails.application.routes.draw do
     namespace :v1 do
       resources :alerts, only: :create
       resource :token, only: :show
+      resources :notification_targets, only: %i[create update]
     end
   end
 
@@ -17,6 +18,7 @@ Rails.application.routes.draw do
       resources :watchlists
       resources :investigations
       resources :alerts, only: %i[index show update]
+      resources :notification_endpoints, only: %i[index create destroy]
       resources :policies do
         post :simulate, on: :member
         post :upload_velato, on: :member
