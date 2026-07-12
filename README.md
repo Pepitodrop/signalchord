@@ -1,25 +1,36 @@
 # SignalChord
 
-**Real-time intelligence from connected news signals.**
+**Evidence-linked news intelligence built on Kafka and Neo4j.**
 
-SignalChord is a production-oriented, multi-tenant news intelligence platform built around Apache Kafka and Neo4j. It ingests permitted public information, preserves source provenance, extracts entities and claims, builds a temporal knowledge graph, evaluates auditable alert policies—including constrained Velato MIDI programs—and delivers real-time web and mobile experiences.
+SignalChord is an early-stage, multi-tenant intelligence platform that ingests permitted news sources, preserves provenance, extracts entities and claims, projects them into a temporal knowledge graph, evaluates auditable alert policies, and delivers web, mobile and realtime experiences.
 
-## Current delivery stage
+> **Project status:** public-alpha quality. The repository contains a tested reference vertical slice and production-oriented deployment scaffolding. It is not yet a production service or a finished commercial product. See [Production readiness](docs/production-readiness.md).
 
-This branch implements the foundation and the first coherent vertical-slice skeleton:
+## What is implemented
 
-1. RSS/Atom discovery in Go.
-2. Kafka event envelopes with versioned Protobuf schemas.
-3. Document normalization and object-storage contracts.
-4. Typed Python NLP, entity-resolution and Velato policy services.
-5. Idempotent Neo4j mutation contracts and schema scripts.
-6. Rails control-plane boundary and outbox design.
-7. React analyst UI and Expo mobile alert client.
-8. Local Kafka KRaft, Schema Registry, Kafka Connect, Neo4j, PostgreSQL, Redis, MinIO, OpenSearch and observability stack.
+The reference article-to-alert flow includes:
 
-The first slice is deliberately narrow. It proves the article-to-alert lifecycle before adding broad source coverage, advanced extraction models or large-scale graph analytics.
+1. Go RSS/Atom discovery, fetching and normalization.
+2. Kafka event contracts and versioned Protobuf schemas.
+3. MinIO-backed immutable source storage and Redis deduplication.
+4. Deterministic Python extraction, entity resolution and claim processing.
+5. A first-party, idempotent Kafka-to-Neo4j graph projector.
+6. OpenSearch projection, graph query and analytics APIs.
+7. Rails identity, tenancy, RBAC, sources, watchlists, alerts and audit APIs.
+8. Deterministic Velato-compatible policy evaluation.
+9. React analyst UI, Expo mobile client and an authenticated realtime gateway.
+10. Docker Compose integration tests and a consolidated Helm chart for stateless workloads.
+
+The default verified path deliberately avoids requiring a third-party Kafka Connect plugin. Kafka Connect configuration remains available as an optional integration for environments that validate and operate it separately.
 
 ## Quick start
+
+Requirements:
+
+- a recent Docker Engine or Docker Desktop
+- Docker Compose v2
+- `curl`
+- At least 12 GB of available container memory is recommended for the full profile
 
 ```bash
 cp .env.example .env
@@ -27,26 +38,59 @@ cp .env.example .env
 ./scripts/smoke-test.sh
 ```
 
-Requirements: Docker 26+, Docker Compose v2, 12 GB available RAM recommended.
+The smoke test exercises the synthetic repository-owned source through Kafka, object storage, NLP, Neo4j, OpenSearch, alert persistence and the web surface.
+
+Development credentials and host port exposure in Compose are intentionally local-only.
+
+## Deployment model
+
+Source modules remain independently testable, but the initial Kubernetes topology groups processes that share scaling and release characteristics:
+
+- control plane
+- transactional outbox
+- ingestion
+- intelligence
+- graph/search projection
+- graph query
+- graph analytics
+- alerting and notifications
+- realtime gateway
+- web
+
+Stateful infrastructure—Kafka, PostgreSQL, Neo4j, Redis, object storage and OpenSearch—is expected to be externally operated or managed in production. Docker Compose remains the local and CI reference runtime.
+
+See [Deployment](docs/deployment.md) and the Helm chart under `infrastructure/kubernetes/helm/signalchord`.
 
 ## Repository map
 
-- `apps/` — product surfaces and Rails control plane.
-- `services/` — Kafka-oriented Go and Python bounded contexts.
-- `packages/` — shared TypeScript types, clients, UI and event contracts.
-- `graph/` — Neo4j schema, migrations, queries and fixtures.
-- `connectors/` — Kafka Connect configurations.
+- `apps/` — web, mobile and Rails control plane.
+- `services/` — Go and Python streaming components.
+- `packages/` — TypeScript clients, domain types and event schemas.
+- `graph/` — Neo4j constraints, queries and fixtures.
+- `connectors/` — optional connector configurations.
 - `infrastructure/` — Docker, Kubernetes, Terraform and monitoring.
-- `docs/` — architecture, ADRs, runbooks, roadmap, governance and business case.
+- `docs/` — architecture, ADRs, runbooks, governance and readiness.
 
 ## Architecture
 
-Start with [`docs/architecture/architecture.md`](docs/architecture/architecture.md), then review the [topic catalog](docs/architecture/kafka-topic-catalog.md), [graph model](docs/architecture/neo4j-graph-model.md), and [implementation phases](docs/implementation-phases.md).
+Start with:
 
-## Status and honesty
+- [Architecture overview](docs/architecture/architecture.md)
+- [Service responsibility matrix](docs/architecture/service-responsibility-matrix.md)
+- [Kafka topic catalog](docs/architecture/kafka-topic-catalog.md)
+- [Neo4j graph model](docs/architecture/neo4j-graph-model.md)
+- [Production readiness](docs/production-readiness.md)
 
-This is an initial production-oriented foundation, not a completed commercial platform. The repository separates implemented vertical-slice code from planned service contracts. Completion criteria and unresolved risks are tracked in `docs/implementation-phases.md` and ClickUp import artifacts.
+## Security and responsible use
+
+Use only sources you are legally permitted to collect and process. Do not deploy the example credentials from Compose. Production deployment requires external secrets, TLS/SASL, least-privilege access, source licensing, retention controls, backup/restore testing and a documented incident process.
+
+Report vulnerabilities according to [SECURITY.md](SECURITY.md). Data and source constraints are described in [Data governance](docs/data-governance.md) and the [Threat model](docs/threat-model.md).
+
+## Publication status
+
+The codebase is suitable to publish as an **alpha/open-development repository** once the pull request checks are green. Publication does not mean the hosted system is production-ready. Known operational and product gaps are listed explicitly in [Production readiness](docs/production-readiness.md).
 
 ## License
 
-Apache-2.0 is recommended for the platform code. Source adapters, model artifacts and third-party datasets may require narrower terms; see `docs/license-recommendation.md`.
+SignalChord source code is licensed under the [Apache License 2.0](LICENSE). Third-party services, images, connectors, datasets and model artifacts retain their own licenses and terms. See [NOTICE](NOTICE) and the [license notes](docs/license-recommendation.md).

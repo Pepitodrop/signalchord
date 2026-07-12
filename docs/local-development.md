@@ -2,9 +2,9 @@
 
 ## Requirements
 
-Docker Engine 26 or Docker Desktop with Compose v2, `curl`, and approximately 12 GB available RAM. No external source is required: the default slice uses a synthetic, repository-owned RSS/article fixture.
+Use a recent Docker Engine or Docker Desktop with Compose v2 and `curl`. At least 12 GB of available container memory is recommended for the full profile. No external source is required: the default slice uses a synthetic repository-owned RSS/article fixture.
 
-## Start
+## Start and verify
 
 ```bash
 cp .env.example .env
@@ -12,25 +12,34 @@ cp .env.example .env
 ./scripts/smoke-test.sh
 ```
 
-The script starts Kafka in KRaft mode, Schema Registry, Kafka Connect with Neo4j Connector 5.5.0, Neo4j Community, PostgreSQL, Redis, MinIO, OpenSearch, OpenTelemetry Collector, Prometheus, Grafana and the implemented slice services.
+The reference profile starts Kafka in KRaft mode, Schema Registry, Neo4j Community, PostgreSQL, Redis, MinIO, OpenSearch, OpenTelemetry Collector, Prometheus, Grafana and all implemented application services.
+
+Graph writes use the first-party `graph-projector`, which provides an allowlisted, idempotent and tested Kafka-to-Neo4j path.
+
+## Optional Kafka Connect profile
+
+Kafka Connect is not required for the verified local runtime. To test it independently:
+
+```bash
+docker compose --profile connect up -d --build kafka-connect
+./scripts/configure-connectors.sh
+```
+
+Connector compatibility must be validated against the exact Kafka Connect, Neo4j and plugin versions before production use.
 
 ## Endpoints
 
 - Web: `http://localhost:5173`
+- Control-plane API: `http://localhost:3000`
 - Realtime health: `http://localhost:8088/healthz`
 - Schema Registry: `http://localhost:8081`
-- Kafka Connect: `http://localhost:8083`
 - Neo4j Browser: `http://localhost:7474`
 - MinIO console: `http://localhost:9001`
 - OpenSearch: `http://localhost:9200`
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3001`
 
-Credentials in Compose are development-only examples.
-
-## CDC limitation
-
-The local profile uses Neo4j Community and therefore does not activate the CDC source connector. Use a licensed Neo4j Enterprise/AuraDB Enterprise environment and `connectors/neo4j-source/selected-cdc.json` to exercise CDC. The sink connector works with Community.
+All Compose credentials are development-only examples.
 
 ## Reset
 
@@ -40,8 +49,7 @@ The local profile uses Neo4j Community and therefore does not activate the CDC s
 
 ## Troubleshooting
 
-- Kafka not healthy: inspect `docker compose logs kafka` and verify ports 29092/9093 are free.
-- Connect plugin missing: rebuild `kafka-connect` without cache and confirm the 5.5.0 JAR exists under `/usr/share/java/neo4j`.
-- No alert: inspect consumer logs in order: document-fetcher, stream-normalizer, nlp-worker, velato-worker.
-- No graph node: inspect the connector status at `/connectors/signalchord-neo4j-sink/status` and the graph DLQ topic.
-- Low-memory host: stop OpenSearch/Grafana first or raise Docker memory allocation.
+- Kafka not healthy: inspect `docker compose logs kafka` and verify port `29092` is free.
+- No alert: inspect `document-fetcher`, `stream-normalizer`, `nlp-worker`, `velato-worker` and `alert-projector` in order.
+- No graph node: inspect `graph-projector` and `graph.mutation-requested.v1.dlq`.
+- Low-memory host: stop OpenSearch and Grafana first or increase Docker memory.

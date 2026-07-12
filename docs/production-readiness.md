@@ -1,0 +1,51 @@
+# Production readiness
+
+## Decision
+
+SignalChord is suitable for source publication and controlled development/staging use. It is **not yet approved for an internet-facing production service handling real customer data**.
+
+The readiness decision must be based on evidence, not repository completeness. A green CI run proves the checked code and synthetic vertical slice; it does not prove capacity, availability, legal source rights or operational maturity.
+
+## Verified in CI
+
+- TypeScript typecheck, tests and production builds.
+- Go formatting, vet, race tests and vulnerability reachability checks.
+- Python extraction, policy, notification and graph-projector tests.
+- Rails database setup, request specs and autoload validation.
+- Protobuf lint and compatibility checks.
+- Shell, JSON, Compose and Helm rendering validation.
+- Secret-history scanning and high/critical filesystem vulnerability scanning.
+- Docker image builds for the implemented services.
+- Synthetic end-to-end article-to-alert smoke test.
+
+## Production blockers
+
+The following are required before production approval:
+
+1. **Licensed source inventory:** contracts, robots/terms review, attribution and deletion obligations for every source.
+2. **Immutable supply chain:** committed dependency lockfiles, digest-pinned images, SBOMs, signed provenance and release promotion by digest.
+3. **Managed secrets and transport security:** secret manager/CSI, Kafka TLS/SASL and ACLs, database TLS, certificate rotation and no example credentials.
+4. **Data protection:** retention schedules, subject/deletion workflows, regional requirements and a completed privacy/security review.
+5. **Capacity evidence:** realistic load tests, Kafka lag targets, Neo4j/OpenSearch sizing, rate limits and cost envelopes.
+6. **Reliability evidence:** backup and restore drills, disaster-recovery objectives, dependency failure tests and rollback exercises.
+7. **Observability:** production dashboards, actionable alerts, trace sampling, SLOs and on-call runbooks.
+8. **Kubernetes hardening:** environment-specific NetworkPolicies, ingress/TLS, workload identities, immutable images, autoscaling based on measured signals and cluster policy enforcement.
+9. **Model quality:** representative evaluation datasets, precision/recall targets, bias/error analysis and human-review thresholds.
+10. **Product readiness:** completed authentication flows, customer onboarding, support process, billing controls and mobile signing/push credentials where applicable.
+
+## Kubernetes position
+
+The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.
+
+Autoscaling is disabled by default because CPU is not necessarily the correct scaling signal for Kafka consumers. Enable scaling only after measuring consumer lag, processing latency and partition constraints. KEDA or an equivalent custom-metric adapter is a likely later choice.
+
+## Release gate
+
+A release candidate may be promoted only when:
+
+- required CI checks are green on the exact commit;
+- images are immutable and scanned;
+- migrations and synthetic canaries pass in staging;
+- rollback and restore procedures have been exercised;
+- no unresolved critical security or data-governance finding exists;
+- a named owner accepts the remaining risks.
