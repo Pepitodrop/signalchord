@@ -3,6 +3,7 @@ WORKDIR /workspace
 RUN corepack enable
 COPY package.json pnpm-workspace.yaml turbo.json ./
 COPY packages/domain-types ./packages/domain-types
+COPY packages/api-client ./packages/api-client
 COPY apps/web ./apps/web
 RUN pnpm install --frozen-lockfile=false
 RUN pnpm --filter @signalchord/web build
@@ -10,3 +11,4 @@ RUN pnpm --filter @signalchord/web build
 FROM nginx:1.28.0-alpine
 COPY --from=build /workspace/apps/web/dist /usr/share/nginx/html
 COPY infrastructure/docker/web-nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
