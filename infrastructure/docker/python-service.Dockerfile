@@ -5,4 +5,5 @@ RUN useradd --create-home --uid 10001 signalchord
 COPY services/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir --requirement /tmp/requirements.txt
 COPY services/ /workspace/services/
+COPY velato/ /workspace/velato/
 USER signalchord
