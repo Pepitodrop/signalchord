@@ -62,7 +62,7 @@ module Api
 
       def simulate
         inputs = params.require(:inputs).permit!.to_h.transform_values(&:to_f)
-        version = @policy.policy_versions.where(status: "validated").order(version_number: :desc).first
+        version = @policy.policy_versions.where(status: %w[validated active]).order(version_number: :desc).first
         result = simulate_velato(version, inputs)
         render json: result.merge(policy_id: @policy.id, policy_version_id: version&.id, deterministic: true)
       rescue VelatoValidationError => error
