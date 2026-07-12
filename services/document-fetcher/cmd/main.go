@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"strconv"
@@ -120,7 +119,7 @@ func safeHTTPClient() *http.Client {
 			return nil, err
 		}
 		for _, ip := range ips {
-			if !documentfetcher.IsDeniedIP(ip) {
+			if documentfetcher.PrivateHostAllowed(host) || !documentfetcher.IsDeniedIP(ip) {
 				return dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
 			}
 		}
@@ -148,4 +147,3 @@ func safeHeaders(headers http.Header) map[string]string {
 func env(key, fallback string) string { if value := os.Getenv(key); value != "" { return value }; return fallback }
 func envBool(key string, fallback bool) bool { value, err := strconv.ParseBool(os.Getenv(key)); if err != nil { return fallback }; return value }
 func fatal(logger *slog.Logger, action string, err error) { if err != nil { logger.Error(action, "error", err); os.Exit(1) } }
-var _ = url.URL{}

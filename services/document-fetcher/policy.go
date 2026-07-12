@@ -5,10 +5,22 @@ import (
 	"errors"
 	"net"
 	"net/url"
+	"os"
+	"strings"
 )
 
 func IsDeniedIP(ip net.IP) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+}
+
+func PrivateHostAllowed(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(host), ".")
+	for _, configured := range strings.Split(os.Getenv("FETCH_PRIVATE_HOST_ALLOWLIST"), ",") {
+		if host != "" && host == strings.TrimSuffix(strings.ToLower(strings.TrimSpace(configured)), ".") {
+			return true
+		}
+	}
+	return false
 }
 
 func ValidateFetchURL(raw string) error {
@@ -27,7 +39,7 @@ func ValidateFetchURL(raw string) error {
 		return err
 	}
 	for _, ip := range ips {
-		if IsDeniedIP(ip) {
+		if IsDeniedIP(ip) && !PrivateHostAllowed(u.Hostname()) {
 			return errors.New("private or local address denied")
 		}
 	}
