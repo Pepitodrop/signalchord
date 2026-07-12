@@ -69,7 +69,8 @@ def entity(stable_id: str, tenant_id: str = Query(min_length=1, max_length=128))
     )
     if not rows:
         raise HTTPException(status_code=404, detail="entity_not_found")
-    return rows[0]
+    row = rows[0]
+    return row["entity"] | {"evidence": row["evidence"], "mentions": row["mentions"]}
 
 
 @app.get("/v1/entities/{stable_id}/timeline")
@@ -82,13 +83,13 @@ def entity_timeline(
         """
         MATCH (entity:Entity {stable_id: $stable_id})
         WHERE entity.tenant_id IS NULL OR entity.tenant_id = $tenant_id
-        MATCH (article:Article)-[relationship:MENTIONS|ABOUT|AFFECTS]->(entity)
-        WHERE article.tenant_id IS NULL OR article.tenant_id = $tenant_id
-        OPTIONAL MATCH (article)-[:MAKES_CLAIM]->(claim:Claim)
-        RETURN properties(article) AS article,
+        MATCH (related)-[relationship]-(entity)
+        WHERE (related.tenant_id IS NULL OR related.tenant_id = $tenant_id)
+        RETURN properties(related) AS related,
+               type(relationship) AS relationship_type,
                properties(relationship) AS relationship,
-               collect(DISTINCT properties(claim))[0..20] AS claims
-        ORDER BY coalesce(article.published_at, article.observed_at) DESC
+               coalesce(relationship.observed_at, related.observed_at) AS observed_at
+        ORDER BY observed_at DESC
         LIMIT $limit
         """,
         {"stable_id": stable_id, "tenant_id": tenant_id, "limit": limit},
@@ -113,20 +114,35 @@ def entity_graph(
         RETURN properties(root) AS root,
                type(relationship) AS relationship_type,
                properties(relationship) AS relationship,
-               labels(neighbor) AS neighbor_labels,
-               properties(neighbor) AS neighbor
+               properties(neighbor) AS neighbor,
+               startNode(relationship).stable_id AS source,
+               endNode(relationship).stable_id AS target
         LIMIT $limit
         """,
-        {
-            "stable_id": stable_id,
-            "tenant_id": tenant_id,
-            "limit": limit,
-            "min_confidence": min_confidence,
-        },
+        {"stable_id": stable_id, "tenant_id": tenant_id, "limit": limit, "min_confidence": min_confidence},
     )
     if not rows:
-        entity(stable_id, tenant_id)
-    return {"root_id": stable_id, "edges": rows, "truncated": len(rows) == limit}
+        root = entity(stable_id, tenant_id)
+        return {"nodes": [root], "relationships": [], "truncated": False}
+
+    node_map: dict[str, dict[str, Any]] = {}
+    relationships: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        root = row["root"]
+        neighbor = row["neighbor"]
+        node_map[root["stable_id"]] = root
+        node_map[neighbor["stable_id"]] = neighbor
+        properties = row["relationship"]
+        relationships.append(
+            properties
+            | {
+                "stable_id": properties.get("stable_id", f"relationship:{index}"),
+                "type": row["relationship_type"],
+                "source": row["source"],
+                "target": row["target"],
+            }
+        )
+    return {"nodes": list(node_map.values()), "relationships": relationships, "truncated": len(rows) == limit}
 
 
 @app.post("/v1/paths")
@@ -145,8 +161,5 @@ def paths(request: PathRequest) -> dict[str, Any]:
     return {
         "from_id": request.from_id,
         "to_id": request.to_id,
-        "paths": records(
-            query,
-            {"from_id": request.from_id, "to_id": request.to_id, "tenant_id": request.tenant_id},
-        ),
+        "paths": records(query, {"from_id": request.from_id, "to_id": request.to_id, "tenant_id": request.tenant_id}),
     }
