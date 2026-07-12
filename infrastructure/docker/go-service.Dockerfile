@@ -1,4 +1,4 @@
-FROM golang:1.23.10-alpine AS build
+FROM golang:1.26.5-alpine AS build
 ARG TARGET
 WORKDIR /workspace/services
 COPY services/go.mod ./
