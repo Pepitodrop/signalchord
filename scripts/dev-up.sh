@@ -1,14 +1,22 @@
 #!/usr/bin/env sh
 set -eu
 
-docker compose --profile slice up -d --build \
-  kafka schema-registry neo4j postgres redis minio opensearch otel-collector prometheus grafana kafka-connect \
-  sample-source control-plane outbox-publisher document-fetcher stream-normalizer nlp-worker entity-resolution \
-  claim-intelligence search-projector graph-query graph-analytics-api graph-analytics-worker \
-  velato-api velato-worker alert-projector notification-worker realtime-gateway web
+# Bring up stateful infrastructure first. Application consumers must not start
+# until Kafka topics and the Neo4j schema exist.
+docker compose --profile slice up -d --build --wait --wait-timeout 300 \
+  kafka schema-registry neo4j postgres redis minio opensearch \
+  otel-collector prometheus grafana sample-source
 
 ./scripts/create-topics.sh
 ./scripts/apply-graph-schema.sh
+
+# Start application services only after their durable dependencies are ready.
+docker compose --profile slice up -d --build --wait --wait-timeout 300 \
+  kafka-connect control-plane outbox-publisher document-fetcher stream-normalizer \
+  nlp-worker entity-resolution claim-intelligence search-projector graph-query \
+  graph-analytics-api graph-analytics-worker velato-api velato-worker \
+  alert-projector notification-worker realtime-gateway web
+
 ./scripts/configure-connectors.sh
 
 docker compose --profile slice run --rm feed-collector
