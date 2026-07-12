@@ -1,3 +1,3 @@
 # graph-analytics
 
-Runs bounded Neo4j GDS projections for centrality, communities, emerging clusters, source diversity and unusual relationship changes. Every signal includes explainable evidence paths.
+Tenant-bounded Neo4j analytics for explainable signals. The service uses an ephemeral Neo4j Graph Data Science projection for degree centrality when GDS is available, then drops the projection. Community/local environments may use the explicitly labeled Cypher fallback. Source diversity, recent relationship changes, method and evidence path identifiers are returned with every result.
