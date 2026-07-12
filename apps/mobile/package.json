@@ -1,6 +1,6 @@
 {
   "name": "@signalchord/mobile",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -11,10 +11,12 @@
     "test": "node --test"
   },
   "dependencies": {
+    "@signalchord/api-client": "workspace:*",
     "@signalchord/domain-types": "workspace:*",
     "expo": "~53.0.12",
     "expo-constants": "~17.1.6",
     "expo-linking": "~7.1.5",
+    "expo-notifications": "~0.31.4",
     "expo-router": "~5.1.0",
     "expo-secure-store": "~14.2.3",
     "expo-status-bar": "~2.2.3",

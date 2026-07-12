@@ -1,2 +1,7 @@
 import {Stack} from "expo-router";
-export default function Layout(){return <Stack screenOptions={{headerStyle:{backgroundColor:"#10131b"},headerTintColor:"#f4f4ff",contentStyle:{backgroundColor:"#080a0f"}}}/>}
+import {SessionProvider} from "../lib/session";
+import {theme} from "../lib/theme";
+
+export default function Layout() {
+  return <SessionProvider><Stack screenOptions={{headerStyle:{backgroundColor:theme.surface},headerTintColor:theme.text,contentStyle:{backgroundColor:theme.background}}}/></SessionProvider>;
+}
