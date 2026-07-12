@@ -1,0 +1,162 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing semantic-version tag to publish
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/pepitodrop/signalchord
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: meta
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then tag="${REQUESTED_TAG}"; fi
+          case "$tag" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Release tag must be vMAJOR.MINOR.PATCH" >&2; exit 1;; esac
+          git fetch origin main --tags
+          git rev-parse --verify "refs/tags/$tag"
+          tagged_sha=$(git rev-list -n 1 "$tag")
+          git merge-base --is-ancestor "$tagged_sha" origin/main
+          test -f pnpm-lock.yaml
+          test -f apps/control-plane/Gemfile.lock
+          test -f services/go.sum
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Verify frozen dependency metadata
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.12.1 --activate
+          pnpm install --frozen-lockfile
+          git diff --exit-code -- pnpm-lock.yaml apps/control-plane/Gemfile.lock services/go.sum
+
+  publish-images:
+    needs: verify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: control-plane
+            dockerfile: infrastructure/docker/control-plane.Dockerfile
+            build_args: ''
+          - name: python
+            dockerfile: infrastructure/docker/python-service.Dockerfile
+            build_args: ''
+          - name: web
+            dockerfile: infrastructure/docker/web.Dockerfile
+            build_args: ''
+          - name: feed-collector
+            dockerfile: infrastructure/docker/go-service.Dockerfile
+            build_args: TARGET=./feed-collector
+          - name: document-fetcher
+            dockerfile: infrastructure/docker/go-service.Dockerfile
+            build_args: TARGET=./document-fetcher/cmd
+          - name: stream-normalizer
+            dockerfile: infrastructure/docker/go-service.Dockerfile
+            build_args: TARGET=./stream-normalizer/cmd
+          - name: realtime-gateway
+            dockerfile: infrastructure/docker/go-service.Dockerfile
+            build_args: TARGET=./realtime-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: sigstore/cosign-installer@v3
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.build_args }}
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}:${{ needs.verify.outputs.tag }}
+            ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Sign immutable image digest
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+      - name: Record immutable digest
+        shell: bash
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: printf '%s@%s\n' "$IMAGE" "$DIGEST" > "digest-${{ matrix.name }}.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.name }}
+          path: digest-${{ matrix.name }}.txt
+          if-no-files-found: error
+
+  release:
+    needs: [verify, publish-images]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          merge-multiple: true
+          path: release-digests
+      - name: Build release manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat release-digests/digest-*.txt | sort > image-digests.txt
+          sha256sum image-digests.txt > SHA256SUMS
+          git archive --format=tar.gz --prefix="signalchord-${{ needs.verify.outputs.tag }}/" -o "signalchord-${{ needs.verify.outputs.tag }}.tar.gz" HEAD
+          sha256sum "signalchord-${{ needs.verify.outputs.tag }}.tar.gz" >> SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.verify.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            image-digests.txt
+            SHA256SUMS
+            signalchord-${{ needs.verify.outputs.tag }}.tar.gz
