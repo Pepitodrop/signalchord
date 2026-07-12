@@ -1,0 +1,71 @@
+List,Milestone,Task,Status,Priority,Story Points,Risk,Service,Language,Dependencies,Acceptance Status
+Product and Architecture,Milestone 0 — Foundation,Confirm product scope,Backlog,urgent,3,Medium,platform,Markdown / TypeScript contracts,None,Not Started
+Product and Architecture,Milestone 0 — Foundation,Create architecture decision records,Backlog,high,5,Medium,platform,Markdown,Confirm product scope,Not Started
+Product and Architecture,Milestone 0 — Foundation,Initialize monorepo,Backlog,urgent,5,Low,platform,TypeScript / JavaScript / Go / Python / Ruby,Confirm product scope; Create architecture decision records,Not Started
+Product and Architecture,Milestone 0 — Foundation,Set up CI,Backlog,high,5,Medium,platform,YAML / Shell / TypeScript,Initialize monorepo,Not Started
+Product and Architecture,Milestone 0 — Foundation,Create Docker development environment,Backlog,urgent,8,High,local-platform,YAML / Shell,Initialize monorepo,Not Started
+Product and Architecture,Milestone 0 — Foundation,Define event standards,Backlog,urgent,5,High,event-platform,Protobuf / Markdown,Create architecture decision records,Not Started
+Product and Architecture,Milestone 0 — Foundation,Define graph model,Backlog,urgent,5,High,knowledge-graph,Cypher / Markdown,Create architecture decision records; Define event standards,Not Started
+Product and Architecture,Milestone 0 — Foundation,Create security baseline,Backlog,urgent,8,High,platform-security,Markdown / policy-as-code,Confirm product scope; Define event standards; Define graph model,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Implement source registry,Backlog,urgent,8,High,control-plane,Ruby / SQL,Milestone 0 — Foundation,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Implement RSS collector,Backlog,urgent,8,Medium,feed-collector,Go,Implement source registry; Define event standards,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Implement document fetcher,Backlog,urgent,13,High,document-fetcher,Go,Implement RSS collector; Create Docker development environment,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Define Kafka schemas,Backlog,urgent,8,High,event-platform,Protobuf,Define event standards,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Add normalization,Backlog,high,8,Medium,stream-normalizer,Go,Implement document fetcher; Define Kafka schemas,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Add deduplication,Backlog,high,8,High,stream-normalizer,Go / Redis,Add normalization,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Add object storage,Backlog,high,5,High,document-fetcher,Go / S3,Implement document fetcher,Not Started
+Kafka Streaming,Milestone 1 — Streaming ingestion,Add dead-letter handling,Backlog,high,5,High,event-platform,Go / Python / Kafka,Define Kafka schemas,Not Started
+NLP and Machine Intelligence,Milestone 2 — Knowledge extraction,Implement NLP pipeline,Backlog,urgent,13,High,nlp-pipeline,Python,Milestone 1 — Streaming ingestion,Not Started
+NLP and Machine Intelligence,Milestone 2 — Knowledge extraction,Add named-entity extraction,Backlog,high,8,High,nlp-pipeline,Python,Implement NLP pipeline,Not Started
+NLP and Machine Intelligence,Milestone 2 — Knowledge extraction,Add claim extraction,Backlog,high,13,High,nlp-pipeline,Python,Implement NLP pipeline,Not Started
+NLP and Machine Intelligence,Milestone 2 — Knowledge extraction,Add relation extraction,Backlog,high,13,High,nlp-pipeline,Python,Add named-entity extraction,Not Started
+NLP and Machine Intelligence,Milestone 2 — Knowledge extraction,Add embeddings,Backlog,normal,8,Medium,nlp-pipeline,Python,Implement NLP pipeline,Not Started
+NLP and Machine Intelligence,Milestone 2 — Knowledge extraction,Add evaluation fixtures,Backlog,urgent,8,High,nlp-pipeline,Python,Add named-entity extraction; Add claim extraction; Add relation extraction,Not Started
+Neo4j Knowledge Graph,Milestone 3 — Knowledge graph,Create Neo4j constraints and indexes,Backlog,urgent,5,High,knowledge-graph,Cypher,Define graph model,Not Started
+Neo4j Knowledge Graph,Milestone 3 — Knowledge graph,Create Kafka sink configuration,Backlog,urgent,8,High,neo4j-sink,JSON / Cypher,Define Kafka schemas; Create Neo4j constraints and indexes,Not Started
+Neo4j Knowledge Graph,Milestone 3 — Knowledge graph,Implement idempotent mutations,Backlog,urgent,13,High,neo4j-sink,Cypher,Create Kafka sink configuration,Not Started
+Neo4j Knowledge Graph,Milestone 3 — Knowledge graph,Add provenance,Backlog,urgent,8,High,knowledge-graph,Cypher / Protobuf,Implement idempotent mutations; Add evaluation fixtures,Not Started
+Neo4j Knowledge Graph,Milestone 3 — Knowledge graph,Add temporal relationships,Backlog,high,8,High,knowledge-graph,Cypher,Add provenance,Not Started
+Neo4j Knowledge Graph,Milestone 3 — Knowledge graph,Add CDC source connector,Backlog,normal,8,High,neo4j-source,JSON / Cypher,Implement idempotent mutations,Not Started
+Neo4j Knowledge Graph,Milestone 3 — Knowledge graph,Add graph-query service,Backlog,urgent,13,High,control-plane,Ruby / Cypher,Add temporal relationships,Not Started
+Rails Control Plane,Milestone 4 — Product control plane,Add users and organizations,Backlog,urgent,13,High,control-plane,Ruby / SQL,Milestone 0 — Foundation,Not Started
+Rails Control Plane,Milestone 4 — Product control plane,Add source management,Backlog,urgent,8,High,control-plane,Ruby / SQL,Add users and organizations; Implement source registry,Not Started
+Rails Control Plane,Milestone 4 — Product control plane,Add watchlists,Backlog,urgent,8,Medium,control-plane,Ruby / SQL,Add users and organizations; Add graph-query service,Not Started
+Rails Control Plane,Milestone 4 — Product control plane,Add saved investigations,Backlog,high,8,Medium,control-plane,Ruby / SQL,Add users and organizations; Add graph-query service,Not Started
+Rails Control Plane,Milestone 4 — Product control plane,Add audit logs,Backlog,urgent,8,High,control-plane,Ruby / SQL / Kafka,Add users and organizations; Define event standards,Not Started
+Rails Control Plane,Milestone 4 — Product control plane,Add API authorization,Backlog,urgent,13,High,control-plane,Ruby,Add users and organizations; Create security baseline,Not Started
+Rails Control Plane,Milestone 4 — Product control plane,Add notification preferences,Backlog,normal,5,Medium,control-plane,Ruby / SQL,Add users and organizations,Not Started
+Web Application,Milestone 5 — Analyst web application,Add dashboard,Backlog,high,8,Medium,web,TypeScript / React,Add API authorization,Not Started
+Web Application,Milestone 5 — Analyst web application,Add search,Backlog,urgent,13,High,web,TypeScript / React,Add API authorization,Not Started
+Web Application,Milestone 5 — Analyst web application,Add entity pages,Backlog,urgent,13,High,web,TypeScript / React,Add graph-query service,Not Started
+Web Application,Milestone 5 — Analyst web application,Add article comparison,Backlog,high,8,Medium,web,TypeScript / React,Add claim extraction,Not Started
+Web Application,Milestone 5 — Analyst web application,Add graph explorer,Backlog,urgent,21,High,web,TypeScript / React / Cypher templates,Add graph-query service; Add entity pages,Not Started
+Web Application,Milestone 5 — Analyst web application,Add timeline,Backlog,high,8,Medium,web,TypeScript / React,Add temporal relationships,Not Started
+Web Application,Milestone 5 — Analyst web application,Add alert inbox,Backlog,urgent,8,High,web,TypeScript / React,Add API authorization; Milestone 6 — Velato intelligence policies,Not Started
+Web Application,Milestone 5 — Analyst web application,Add investigation workspace,Backlog,high,13,High,web,TypeScript / React,Add saved investigations; Add graph explorer,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Define policy register contract,Backlog,urgent,5,High,velato-engine,Protobuf / Markdown,Define event standards,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Implement MIDI upload,Backlog,urgent,8,High,control-plane,Ruby / TypeScript,Define policy register contract; Create security baseline,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Implement Velato parsing,Backlog,urgent,13,High,velato-engine,Python,Define policy register contract,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Implement safe intermediate representation,Backlog,urgent,13,High,velato-engine,Python,Implement Velato parsing,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Implement sandbox,Backlog,urgent,13,Critical,velato-engine,Python,Implement safe intermediate representation; Create security baseline,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Ship default MIDI policies,Backlog,high,8,Medium,velato-engine,Velato / MIDI / Python,Implement sandbox,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Add visual composer,Backlog,normal,21,High,web,TypeScript / React,Implement safe intermediate representation,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Add simulation view,Backlog,high,13,Medium,web,TypeScript / React,Implement sandbox; Add visual composer,Not Started
+Velato Policy Engine,Milestone 6 — Velato intelligence policies,Add policy audit trail,Backlog,urgent,8,High,control-plane,Ruby / SQL,Implement sandbox; Add audit logs,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add Expo project,Backlog,urgent,5,Low,mobile,TypeScript / React Native,Initialize monorepo,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add authentication,Backlog,urgent,13,High,mobile,TypeScript / React Native,Add API authorization; Add Expo project,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add watchlists,Backlog,high,8,Medium,mobile,TypeScript / React Native,Add authentication; Add watchlists,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add alerts,Backlog,urgent,8,High,mobile,TypeScript / React Native,Add authentication; Add alert inbox,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add push notifications,Backlog,urgent,13,High,mobile,TypeScript / React Native,Add alerts; Add notification preferences,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add entity views,Backlog,high,8,Medium,mobile,TypeScript / React Native,Add authentication; Add entity pages,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add story timelines,Backlog,high,8,Medium,mobile,TypeScript / React Native,Add entity views; Add timeline,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add simplified graph,Backlog,normal,13,High,mobile,TypeScript / React Native,Add entity views; Add graph explorer,Not Started
+Mobile Application,Milestone 7 — Mobile application,Add offline cache,Backlog,high,13,High,mobile,TypeScript / React Native,Add alerts; Add entity views,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Add load tests,Backlog,urgent,13,High,platform,JavaScript / Go / Python,Milestones 1–7,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Add replay tests,Backlog,urgent,13,High,event-platform,Go / Python / Shell,Milestones 1–6,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Add security testing,Backlog,urgent,21,Critical,platform-security,Security tooling / Go / Python / TypeScript,Milestones 1–7,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Add observability dashboards,Backlog,urgent,13,High,observability,OpenTelemetry / PromQL / JSON,Milestones 1–7,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Add backup and restore,Backlog,urgent,13,Critical,platform,Terraform / Shell / SQL / Cypher,Milestones 1–4,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Add source-governance workflows,Backlog,urgent,13,Critical,control-plane,Ruby / SQL,Add source management; Create security baseline,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Conduct closed beta,Backlog,high,21,High,product,Product / Analytics,All prior hardening tasks,Not Started
+Testing and Release,Milestone 8 — Hardening and beta,Resolve launch blockers,Backlog,urgent,21,Critical,platform,All,Conduct closed beta,Not Started
