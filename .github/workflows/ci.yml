@@ -154,9 +154,18 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          format: json
+          output: trivy-report.json
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: '1'
+      - name: Upload Trivy report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.json
+          if-no-files-found: error
 
   docker-build:
     runs-on: ubuntu-latest
