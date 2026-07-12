@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
 set -eu
+COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.yml:docker-compose.override.yml:docker-compose.projector.yml}
+export COMPOSE_FILE
 
 # Bring up stateful infrastructure first. Application consumers must not start
 # until Kafka topics, the graph schema and local search settings exist.

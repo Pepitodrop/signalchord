@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
 set -eu
+COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.yml:docker-compose.override.yml:docker-compose.projector.yml}
+export COMPOSE_FILE
 TOKEN=${SIGNALCHORD_TOKEN:-signalchord-dev-token}
 API=${SIGNALCHORD_API_URL:-http://localhost:3000}
 
