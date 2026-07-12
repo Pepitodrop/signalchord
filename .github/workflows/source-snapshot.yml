@@ -13,10 +13,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Package repository source
-        run: tar --exclude=.git --exclude=node_modules --exclude=dist --exclude=.expo -czf signalchord-source.tgz .
+        run: tar --exclude=.git --exclude=node_modules --exclude=dist --exclude=.expo -czf /tmp/signalchord-source.tgz .
       - uses: actions/upload-artifact@v4
         with:
           name: signalchord-source
-          path: signalchord-source.tgz
+          path: /tmp/signalchord-source.tgz
           if-no-files-found: error
           retention-days: 7
