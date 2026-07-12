@@ -5,7 +5,7 @@ docker compose --profile slice up -d --build \
   kafka schema-registry neo4j postgres redis minio opensearch otel-collector prometheus grafana kafka-connect \
   sample-source control-plane outbox-publisher document-fetcher stream-normalizer nlp-worker entity-resolution \
   claim-intelligence search-projector graph-query graph-analytics-api graph-analytics-worker \
-  velato-api velato-worker alert-projector realtime-gateway web
+  velato-api velato-worker alert-projector notification-worker realtime-gateway web
 
 ./scripts/create-topics.sh
 ./scripts/apply-graph-schema.sh
