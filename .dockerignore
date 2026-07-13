@@ -29,3 +29,13 @@ compose.log
 .DS_Store
 .idea
 .vscode
+.turbo
+**/.turbo
+.cache
+**/.cache
+*.log
+logs
+**/logs
+*.pid
+*.prof
+*.trace

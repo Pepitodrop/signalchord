@@ -42,7 +42,7 @@ services:
       GRAPH_QUERY_URL: http://graph-query:8090
       VELATO_ENGINE_URL: http://velato-api:8091
     command: ["sh", "-lc", "bin/rails db:prepare db:seed && bin/rails server -b 0.0.0.0 -p 3000"]
-    ports: ["3000:3000"]
+    ports: ["${CONTROL_PLANE_HOST_PORT:-3000}:3000"]
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
@@ -122,7 +122,7 @@ services:
     working_dir: /workspace/services/graph-query
     command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8090"]
     environment: {<<: *v1-environment}
-    ports: ["8090:8090"]
+    ports: ["${GRAPH_QUERY_HOST_PORT:-8090}:8090"]
     depends_on: {neo4j: {condition: service_healthy}}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz')\""]
@@ -136,7 +136,7 @@ services:
     working_dir: /workspace/services/graph-analytics
     command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8092"]
     environment: {<<: *v1-environment}
-    ports: ["8092:8092"]
+    ports: ["${GRAPH_ANALYTICS_HOST_PORT:-8092}:8092"]
     depends_on: {neo4j: {condition: service_healthy}}
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8092/healthz')\""]
@@ -160,7 +160,7 @@ services:
     working_dir: /workspace/services/velato-engine
     command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8091"]
     environment: {<<: *v1-environment}
-    ports: ["8091:8091"]
+    ports: ["${VELATO_HOST_PORT:-8091}:8091"]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8091/healthz')\""]
       interval: 10s
@@ -178,6 +178,11 @@ services:
     depends_on:
       kafka: {condition: service_healthy}
       control-plane: {condition: service_healthy}
+
+  web:
+    depends_on:
+      control-plane: {condition: service_healthy}
+      realtime-gateway: {condition: service_started}
 
   feed-collector:
     environment:

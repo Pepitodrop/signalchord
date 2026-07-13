@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from worker import PermanentMutationError, build_statement
+from worker import PermanentMutationError, build_statement, parse_event
 
 
 def event(payload: dict) -> dict:
@@ -69,3 +69,41 @@ def test_rejects_unknown_entity_type() -> None:
                 }
             )
         )
+
+
+def test_requires_tenant_id() -> None:
+    with pytest.raises(PermanentMutationError, match="tenant_id"):
+        build_statement({"payload": {"mutation_type": "upsert_document", "stable_id": "document:1"}})
+
+
+def test_node_identity_includes_tenant_id() -> None:
+    statement = build_statement(
+        event({"mutation_type": "upsert_document", "stable_id": "document:1"})
+    )
+    assert "MERGE (n:GraphNode {tenant_id: $tenant_id, stable_id: $stable_id})" in statement.query
+    assert statement.parameters["tenant_id"] == "tenant-1"
+
+
+def test_relationship_endpoint_identity_includes_tenant_id() -> None:
+    statement = build_statement(
+        event(
+            {
+                "mutation_type": "link_mentions",
+                "stable_id": "relationship:1",
+                "from_id": "article:1",
+                "to_id": "entity:1",
+            }
+        )
+    )
+    assert "MERGE (a:GraphNode {tenant_id: $tenant_id, stable_id: $from_id})" in statement.query
+    assert "MERGE (b:GraphNode {tenant_id: $tenant_id, stable_id: $to_id})" in statement.query
+
+
+def test_parse_event_rejects_malformed_json() -> None:
+    with pytest.raises(PermanentMutationError, match="valid JSON"):
+        parse_event(b"{not json")
+
+
+def test_parse_event_rejects_non_object_json() -> None:
+    with pytest.raises(PermanentMutationError, match="JSON object"):
+        parse_event(b"[]")

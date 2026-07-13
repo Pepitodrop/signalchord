@@ -28,13 +28,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22.16.0
-      - run: pnpm install --frozen-lockfile=false
-      - name: Upload generated pnpm lockfile
-        uses: actions/upload-artifact@v4
-        with:
-          name: pnpm-lock-generated
-          path: pnpm-lock.yaml
-          if-no-files-found: error
+      - run: pnpm install --frozen-lockfile
       - name: Typecheck
         shell: bash
         run: |

@@ -71,6 +71,23 @@ def _properties(payload: dict[str, Any]) -> dict[str, Any]:
     return value
 
 
+def _tenant_id(event: dict[str, Any]) -> str:
+    value = event.get("tenant_id")
+    if not isinstance(value, str) or not value.strip():
+        raise PermanentMutationError("tenant_id must be a non-empty string")
+    return value
+
+
+def parse_event(raw_value: bytes | str) -> dict[str, Any]:
+    try:
+        decoded = json.loads(raw_value)
+    except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise PermanentMutationError("event value must be valid JSON") from error
+    if not isinstance(decoded, dict):
+        raise PermanentMutationError("event value must be a JSON object")
+    return decoded
+
+
 def build_statement(event: dict[str, Any]) -> Statement:
     payload = event.get("payload")
     if not isinstance(payload, dict):
@@ -79,7 +96,7 @@ def build_statement(event: dict[str, Any]) -> Statement:
     mutation_type = _required_string(payload, "mutation_type")
     stable_id = _required_string(payload, "stable_id")
     properties = _properties(payload)
-    tenant_id = event.get("tenant_id")
+    tenant_id = _tenant_id(event)
 
     labels = NODE_LABELS.get(mutation_type)
     if mutation_type == "upsert_entity":
@@ -92,14 +109,15 @@ def build_statement(event: dict[str, Any]) -> Statement:
         label_set = " ".join(f"SET n:{label}" for label in labels)
         return Statement(
             query=(
-                "MERGE (n:GraphNode {stable_id: $stable_id}) "
+                "MERGE (n:GraphNode {tenant_id: $tenant_id, stable_id: $stable_id}) "
                 f"{label_set} "
                 "SET n += $properties "
                 "RETURN n.stable_id AS stable_id"
             ),
             parameters={
                 "stable_id": stable_id,
-                "properties": properties | ({"tenant_id": tenant_id} if tenant_id else {}),
+                "tenant_id": tenant_id,
+                "properties": properties | {"tenant_id": tenant_id},
             },
         )
 
@@ -111,10 +129,8 @@ def build_statement(event: dict[str, Any]) -> Statement:
     to_id = _required_string(payload, "to_id")
     return Statement(
         query=(
-            "MERGE (a:GraphNode {stable_id: $from_id}) "
-            "ON CREATE SET a.tenant_id = $tenant_id "
-            "MERGE (b:GraphNode {stable_id: $to_id}) "
-            "ON CREATE SET b.tenant_id = $tenant_id "
+            "MERGE (a:GraphNode {tenant_id: $tenant_id, stable_id: $from_id}) "
+            "MERGE (b:GraphNode {tenant_id: $tenant_id, stable_id: $to_id}) "
             f"MERGE (a)-[r:{relationship_type} {{stable_id: $stable_id}}]->(b) "
             "SET r += $properties "
             "RETURN r.stable_id AS stable_id"
@@ -124,7 +140,7 @@ def build_statement(event: dict[str, Any]) -> Statement:
             "from_id": from_id,
             "to_id": to_id,
             "tenant_id": tenant_id,
-            "properties": properties | ({"tenant_id": tenant_id} if tenant_id else {}),
+            "properties": properties | {"tenant_id": tenant_id},
         },
     )
 
@@ -202,8 +218,9 @@ def main() -> None:
             if message.error():
                 raise RuntimeError(message.error())
 
-            source = json.loads(message.value())
+            source: dict[str, Any] | None = None
             try:
+                source = parse_event(message.value())
                 statement = build_statement(source)
                 with driver.session() as session:
                     session.execute_write(
@@ -212,7 +229,12 @@ def main() -> None:
                 stable_id = statement.parameters["stable_id"]
                 publish(producer, COMPLETED_TOPIC, stable_id, completion_event(source, stable_id))
             except PermanentMutationError as error:
-                key = source.get("payload", {}).get("stable_id", source.get("event_id", "invalid"))
+                if source is None:
+                    source = {"event_id": "invalid", "payload": {}}
+                payload = source.get("payload", {})
+                if not isinstance(payload, dict):
+                    payload = {}
+                key = payload.get("stable_id", source.get("event_id", "invalid"))
                 publish(producer, DLQ_TOPIC, str(key), dlq_event(source, error))
 
             producer.flush(10)
