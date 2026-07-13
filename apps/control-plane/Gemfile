@@ -19,6 +19,6 @@ gem "opentelemetry-instrumentation-redis", "~> 0.29"
 gem "opentelemetry-instrumentation-ruby_kafka", "~> 0.25"
 
 group :development, :test do
-  gem "rspec-rails", "~> 7.1"
+  gem "rspec-rails", "~> 8.0"
   gem "rubocop", require: false
 end
