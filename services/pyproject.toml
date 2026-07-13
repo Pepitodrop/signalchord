@@ -3,7 +3,7 @@ name = "signalchord-services"
 version = "1.0.0"
 requires-python = ">=3.12"
 dependencies = [
-  "fastapi>=0.115.12",
+  "fastapi>=0.139.0",
   "uvicorn>=0.34.3",
   "pydantic>=2.11.5",
   "confluent-kafka>=2.10.0",
