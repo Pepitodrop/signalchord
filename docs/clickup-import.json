@@ -1,0 +1,23 @@
+{
+  "folder": "SignalChord",
+  "metadataSource": "docs/clickup-import.csv",
+  "statuses": ["Backlog", "Ready", "In Progress", "In Review", "Blocked", "Done"],
+  "customFields": ["Workstream", "Milestone", "Story Points", "Risk", "Service", "Language", "Acceptance Status"],
+  "taskDefaults": {
+    "description": "Implement the named capability with explicit ownership, tenant isolation, provenance, observability, replay and failure behavior.",
+    "acceptanceCriteria": ["Functional behavior implemented", "Tenant and provenance requirements met", "Dependencies and failure/replay behavior documented"],
+    "testRequirements": ["Unit tests", "Relevant contract/integration/security tests", "CI green"],
+    "definitionOfDone": ["Acceptance criteria pass", "Tests and telemetry complete", "Documentation updated", "Review comments resolved"]
+  },
+  "milestones": [
+    {"name":"Milestone 0 — Foundation","list":"Product and Architecture","tasks":["Confirm product scope","Create architecture decision records","Initialize monorepo","Set up CI","Create Docker development environment","Define event standards","Define graph model","Create security baseline"]},
+    {"name":"Milestone 1 — Streaming ingestion","list":"Kafka Streaming","tasks":["Implement source registry","Implement RSS collector","Implement document fetcher","Define Kafka schemas","Add normalization","Add deduplication","Add object storage","Add dead-letter handling"]},
+    {"name":"Milestone 2 — Knowledge extraction","list":"NLP and Machine Intelligence","tasks":["Implement NLP pipeline","Add named-entity extraction","Add claim extraction","Add relation extraction","Add embeddings","Add evaluation fixtures"]},
+    {"name":"Milestone 3 — Knowledge graph","list":"Neo4j Knowledge Graph","tasks":["Create Neo4j constraints and indexes","Create Kafka sink configuration","Implement idempotent mutations","Add provenance","Add temporal relationships","Add CDC source connector","Add graph-query service"]},
+    {"name":"Milestone 4 — Product control plane","list":"Rails Control Plane","tasks":["Add users and organizations","Add source management","Add watchlists","Add saved investigations","Add audit logs","Add API authorization","Add notification preferences"]},
+    {"name":"Milestone 5 — Analyst web application","list":"Web Application","tasks":["Add dashboard","Add search","Add entity pages","Add article comparison","Add graph explorer","Add timeline","Add alert inbox","Add investigation workspace"]},
+    {"name":"Milestone 6 — Velato intelligence policies","list":"Velato Policy Engine","tasks":["Define policy register contract","Implement MIDI upload","Implement Velato parsing","Implement safe intermediate representation","Implement sandbox","Ship default MIDI policies","Add visual composer","Add simulation view","Add policy audit trail"]},
+    {"name":"Milestone 7 — Mobile application","list":"Mobile Application","tasks":["Add Expo project","Add authentication","Add watchlists","Add alerts","Add push notifications","Add entity views","Add story timelines","Add simplified graph","Add offline cache"]},
+    {"name":"Milestone 8 — Hardening and beta","list":"Testing and Release","tasks":["Add load tests","Add replay tests","Add security testing","Add observability dashboards","Add backup and restore","Add source-governance workflows","Conduct closed beta","Resolve launch blockers"]}
+  ]
+}

@@ -1,0 +1,97 @@
+{{- range $name, $workload := .Values.workloads }}
+{{- if $workload.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: signalchord-{{ $name }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    app.kubernetes.io/part-of: signalchord
+spec:
+  replicas: {{ $workload.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+      app.kubernetes.io/part-of: signalchord
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        app.kubernetes.io/part-of: signalchord
+    spec:
+      serviceAccountName: {{ include "signalchord.serviceAccountName" $ }}
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ $.Values.global.terminationGracePeriodSeconds }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: {type: RuntimeDefault}
+      {{- if $.Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ $.Values.topologySpread.maxSkew }}
+          topologyKey: {{ $.Values.topologySpread.topologyKey }}
+          whenUnsatisfiable: {{ $.Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ $name }}
+              app.kubernetes.io/part-of: signalchord
+      {{- end }}
+      containers:
+        {{- range $container := $workload.containers }}
+        - name: {{ $container.name }}
+          image: "{{ $.Values.global.imageRegistry }}/{{ $container.image }}:{{ $.Values.global.imageTag }}"
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          {{- with $container.command }}
+          command: {{ toJson . }}
+          {{- end }}
+          {{- with $container.workingDir }}
+          workingDir: {{ . }}
+          {{- end }}
+          env:
+            - {name: SIGNALCHORD_ENV, value: {{ $.Values.global.environment | quote }}}
+            - {name: KAFKA_BROKERS, value: {{ $.Values.global.config.kafkaBrokers | quote }}}
+            - {name: SCHEMA_REGISTRY_URL, value: {{ $.Values.global.config.schemaRegistryUrl | quote }}}
+            - {name: MINIO_ENDPOINT, value: {{ $.Values.global.config.minioEndpoint | quote }}}
+            - {name: MINIO_BUCKET, value: {{ $.Values.global.config.minioBucket | quote }}}
+            - {name: REDIS_URL, value: {{ $.Values.global.config.redisUrl | quote }}}
+            - {name: OPENSEARCH_URL, value: {{ $.Values.global.config.opensearchUrl | quote }}}
+            - {name: NEO4J_URI, value: {{ $.Values.global.config.neo4jUri | quote }}}
+            - {name: CONTROL_PLANE_URL, value: {{ $.Values.global.config.controlPlaneUrl | quote }}}
+            - {name: GRAPH_QUERY_URL, value: {{ $.Values.global.config.graphQueryUrl | quote }}}
+            - {name: GRAPH_ANALYTICS_URL, value: {{ $.Values.global.config.graphAnalyticsUrl | quote }}}
+            - {name: VELATO_ENGINE_URL, value: {{ $.Values.global.config.velatoEngineUrl | quote }}}
+            - {name: WEB_ORIGIN, value: {{ $.Values.global.config.webOrigin | quote }}}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $.Values.global.config.otelEndpoint | quote }}}
+          envFrom:
+            - secretRef: {name: {{ $.Values.global.existingSecret }}}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          resources:
+            {{- toYaml $container.resources | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+          {{- if $container.port }}
+          ports:
+            - name: {{ default "http" $container.portName }}
+              containerPort: {{ $container.port }}
+          readinessProbe:
+            httpGet: {path: {{ $container.readinessPath | quote }}, port: {{ default "http" $container.portName }}}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            httpGet: {path: {{ $container.livenessPath | quote }}, port: {{ default "http" $container.portName }}}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- end }}
+        {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}
+{{- end }}

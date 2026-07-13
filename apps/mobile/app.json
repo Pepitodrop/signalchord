@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "SignalChord",
+    "slug": "signalchord",
+    "scheme": "signalchord",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "alerts"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "net.signalchord.mobile",
+      "associatedDomains": ["applinks:app.signalchord.example"]
+    },
+    "android": {
+      "package": "net.signalchord.mobile",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "app.signalchord.example",
+              "pathPrefix": "/alert"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,192 @@
+x-v1-environment: &v1-environment
+  KAFKA_BROKERS: kafka:9092
+  SIGNALCHORD_TENANT_ID: 00000000-0000-4000-8000-000000000001
+  SIGNALCHORD_ENV: development
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: signalchord
+  MINIO_SECRET_KEY: signalchord-dev-secret
+  MINIO_BUCKET: raw-documents
+  MINIO_SECURE: "false"
+  REDIS_URL: redis://redis:6379/0
+  OPENSEARCH_URL: http://opensearch:9200
+  NEO4J_URI: neo4j://neo4j:7687
+  NEO4J_USER: neo4j
+  NEO4J_PASSWORD: signalchord-dev
+  CONTROL_PLANE_URL: http://control-plane:3000
+  CONTROL_PLANE_INTERNAL_TOKEN: signalchord-local-internal
+  NOTIFICATION_TOKEN_ENCRYPTION_KEY: signalchord-local-notification-key
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+
+services:
+  neo4j:
+    environment:
+      NEO4J_PLUGINS: '["graph-data-science"]'
+      NEO4J_dbms_security_procedures_unrestricted: gds.*
+      NEO4J_dbms_security_procedures_allowlist: gds.*
+
+  control-plane:
+    profiles: [slice]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/control-plane.Dockerfile
+    environment:
+      <<: *v1-environment
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://signalchord:signalchord@postgres:5432/signalchord
+      REDIS_URL: redis://redis:6379/1
+      SECRET_KEY_BASE: local-development-secret-key-base-not-for-production
+      FORCE_SSL: "false"
+      WEB_ORIGINS: http://localhost:5173
+      SIGNALCHORD_DEMO_PASSWORD: signalchord-demo-password
+      SIGNALCHORD_VERSION: 1.0.0
+      GRAPH_QUERY_URL: http://graph-query:8090
+      VELATO_ENGINE_URL: http://velato-api:8091
+    command: ["sh", "-lc", "bin/rails db:prepare db:seed && bin/rails server -b 0.0.0.0 -p 3000"]
+    ports: ["${CONTROL_PLANE_HOST_PORT:-3000}:3000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  outbox-publisher:
+    profiles: [slice]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/control-plane.Dockerfile
+    environment:
+      <<: *v1-environment
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://signalchord:signalchord@postgres:5432/signalchord
+      SECRET_KEY_BASE: local-development-secret-key-base-not-for-production
+      FORCE_SSL: "false"
+    command: ["bin/outbox-publisher"]
+    depends_on:
+      control-plane: {condition: service_healthy}
+      kafka: {condition: service_healthy}
+
+  entity-resolution:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/entity-resolution
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on: {kafka: {condition: service_healthy}}
+
+  claim-intelligence:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/claim-intelligence
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on: {kafka: {condition: service_healthy}}
+
+  search-projector:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/search-projector
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on:
+      kafka: {condition: service_healthy}
+      opensearch: {condition: service_healthy}
+      minio: {condition: service_healthy}
+
+  alert-projector:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/alert-projector
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on:
+      kafka: {condition: service_healthy}
+      control-plane: {condition: service_healthy}
+
+  notification-worker:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/notification-worker
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on:
+      kafka: {condition: service_healthy}
+      control-plane: {condition: service_healthy}
+
+  graph-query:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/graph-query
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8090"]
+    environment: {<<: *v1-environment}
+    ports: ["${GRAPH_QUERY_HOST_PORT:-8090}:8090"]
+    depends_on: {neo4j: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8090/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  graph-analytics-api:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/graph-analytics
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8092"]
+    environment: {<<: *v1-environment}
+    ports: ["${GRAPH_ANALYTICS_HOST_PORT:-8092}:8092"]
+    depends_on: {neo4j: {condition: service_healthy}}
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8092/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  graph-analytics-worker:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/graph-analytics
+    command: ["python", "worker.py"]
+    environment: {<<: *v1-environment}
+    depends_on:
+      kafka: {condition: service_healthy}
+      neo4j: {condition: service_healthy}
+
+  velato-api:
+    profiles: [slice]
+    build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}
+    working_dir: /workspace/services/velato-engine
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8091"]
+    environment: {<<: *v1-environment}
+    ports: ["${VELATO_HOST_PORT:-8091}:8091"]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8091/healthz')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  nlp-worker:
+    environment: {<<: *v1-environment}
+
+  velato-worker:
+    environment: {<<: *v1-environment}
+
+  realtime-gateway:
+    environment: {<<: *v1-environment, WEB_ORIGIN: http://localhost:5173}
+    depends_on:
+      kafka: {condition: service_healthy}
+      control-plane: {condition: service_healthy}
+
+  web:
+    depends_on:
+      control-plane: {condition: service_healthy}
+      realtime-gateway: {condition: service_started}
+
+  feed-collector:
+    environment:
+      <<: *v1-environment
+      FEED_URL: http://sample-source/feed.xml
+      SOURCE_ID: 00000000-0000-4000-8000-000000000101
+      FETCH_POLICY_ID: local-fixture-only

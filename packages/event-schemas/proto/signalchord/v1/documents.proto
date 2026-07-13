@@ -1,0 +1,35 @@
+syntax = "proto3";
+package signalchord.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message SourceDocumentDiscovered {
+  string source_id = 1;
+  string url = 2;
+  string canonical_url_hash = 3;
+  string title = 4;
+  google.protobuf.Timestamp published_at = 5;
+  string fetch_policy_id = 6;
+}
+
+message SourceDocumentFetched {
+  string document_id = 1;
+  string source_id = 2;
+  string final_url = 3;
+  string content_hash = 4;
+  string object_uri = 5;
+  string media_type = 6;
+  string charset = 7;
+  uint32 http_status = 8;
+  map<string,string> http_headers = 9;
+}
+
+message NormalizedDocument {
+  string document_id = 1;
+  string canonical_url = 2;
+  string title = 3;
+  string clean_text_object_uri = 4;
+  google.protobuf.Timestamp published_at = 5;
+  string language_hint = 6;
+  string content_hash = 7;
+}

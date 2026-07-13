@@ -1,0 +1,56 @@
+syntax = "proto3";
+package signalchord.v1;
+
+message EvidenceRef {
+  string evidence_id = 1;
+  string document_id = 2;
+  uint32 start_offset = 3;
+  uint32 end_offset = 4;
+  string span_hash = 5;
+}
+
+message EntityMentionExtracted {
+  string mention_id = 1;
+  string document_id = 2;
+  string text = 3;
+  string entity_type = 4;
+  double confidence = 5;
+  EvidenceRef evidence = 6;
+}
+
+message ClaimExtracted {
+  string claim_id = 1;
+  string document_id = 2;
+  string normalized_proposition = 3;
+  string speaker_mention_id = 4;
+  double confidence = 5;
+  EvidenceRef evidence = 6;
+  string extraction_model = 7;
+  string extraction_version = 8;
+}
+
+message AlertPolicyInputs {
+  double source_trust = 1;
+  double corroboration_count = 2;
+  double contradiction_count = 3;
+  double novelty = 4;
+  double entity_relevance = 5;
+  double graph_centrality = 6;
+  double geographic_relevance = 7;
+  double watchlist_match = 8;
+  double recency = 9;
+  double source_diversity = 10;
+}
+
+message AlertCreated {
+  string alert_id = 1;
+  string policy_id = 2;
+  string policy_version_id = 3;
+  uint32 alert_score = 4;
+  uint32 severity_code = 5;
+  uint32 routing_code = 6;
+  bool suppressed = 7;
+  repeated string evidence_ids = 8;
+  repeated string graph_path_ids = 9;
+  string execution_trace_hash = 10;
+}

@@ -1,0 +1,269 @@
+global:
+  imageRegistry: ghcr.io/pepitodrop
+  # Production deployments must override this with an immutable commit SHA or digest-backed tag.
+  imageTag: sha-required
+  imagePullPolicy: IfNotPresent
+  environment: staging
+  existingSecret: signalchord-runtime
+  terminationGracePeriodSeconds: 30
+  config:
+    kafkaBrokers: kafka-bootstrap.kafka.svc:9093
+    schemaRegistryUrl: https://schema-registry.kafka.svc
+    minioEndpoint: object-storage.storage.svc:9000
+    minioBucket: raw-documents
+    redisUrl: redis://redis.cache.svc:6379/0
+    opensearchUrl: https://opensearch.search.svc:9200
+    neo4jUri: neo4j://neo4j.graph.svc:7687
+    controlPlaneUrl: http://signalchord-control-plane:3000
+    graphQueryUrl: http://signalchord-graph-query:8090
+    graphAnalyticsUrl: http://signalchord-graph-analytics:8092
+    velatoEngineUrl: http://signalchord-alerting:8091
+    webOrigin: https://app.signalchord.example
+    otelEndpoint: http://otel-collector.observability.svc:4317
+
+serviceAccount:
+  create: true
+  name: signalchord
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+topologySpread:
+  enabled: true
+  maxSkew: 1
+  topologyKey: kubernetes.io/hostname
+  whenUnsatisfiable: ScheduleAnyway
+
+# Source modules remain separate in the monorepo, while the initial production
+# topology groups processes that share scaling and release characteristics.
+workloads:
+  control-plane:
+    enabled: true
+    replicas: 2
+    service: {port: 3000, targetPort: http}
+    autoscaling: {enabled: false, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70}
+    containers:
+      - name: api
+        image: signalchord-control-plane
+        port: 3000
+        portName: http
+        readinessPath: /healthz
+        livenessPath: /healthz
+        resources:
+          requests: {cpu: 200m, memory: 256Mi}
+          limits: {cpu: "1", memory: 1Gi}
+  outbox:
+    enabled: true
+    replicas: 1
+    containers:
+      - name: publisher
+        image: signalchord-control-plane
+        command: [bin/outbox-publisher]
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+  ingestion:
+    enabled: true
+    replicas: 2
+    autoscaling: {enabled: false, minReplicas: 2, maxReplicas: 12, targetCPUUtilizationPercentage: 70}
+    containers:
+      - name: document-fetcher
+        image: signalchord-document-fetcher
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: "1", memory: 512Mi}
+      - name: stream-normalizer
+        image: signalchord-stream-normalizer
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: "1", memory: 512Mi}
+  intelligence:
+    enabled: true
+    replicas: 2
+    autoscaling: {enabled: false, minReplicas: 2, maxReplicas: 12, targetCPUUtilizationPercentage: 75}
+    containers:
+      - name: nlp
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/nlp-pipeline
+        resources:
+          requests: {cpu: 500m, memory: 512Mi}
+          limits: {cpu: "2", memory: 2Gi}
+      - name: entity-resolution
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/entity-resolution
+        resources:
+          requests: {cpu: 200m, memory: 256Mi}
+          limits: {cpu: "1", memory: 1Gi}
+      - name: claim-intelligence
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/claim-intelligence
+        resources:
+          requests: {cpu: 200m, memory: 256Mi}
+          limits: {cpu: "1", memory: 1Gi}
+  projection:
+    enabled: true
+    replicas: 2
+    containers:
+      - name: graph-projector
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/graph-projector
+        resources:
+          requests: {cpu: 200m, memory: 256Mi}
+          limits: {cpu: "1", memory: 1Gi}
+      - name: search-projector
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/search-projector
+        resources:
+          requests: {cpu: 200m, memory: 256Mi}
+          limits: {cpu: "1", memory: 1Gi}
+  graph-query:
+    enabled: true
+    replicas: 2
+    service: {port: 8090, targetPort: http}
+    containers:
+      - name: api
+        image: signalchord-python
+        command: [uvicorn, app:app, --host, 0.0.0.0, --port, "8090"]
+        workingDir: /workspace/services/graph-query
+        port: 8090
+        portName: http
+        readinessPath: /healthz
+        livenessPath: /healthz
+        resources:
+          requests: {cpu: 200m, memory: 256Mi}
+          limits: {cpu: "1", memory: 1Gi}
+  graph-analytics:
+    enabled: true
+    replicas: 2
+    service: {port: 8092, targetPort: http}
+    containers:
+      - name: api
+        image: signalchord-python
+        command: [uvicorn, app:app, --host, 0.0.0.0, --port, "8092"]
+        workingDir: /workspace/services/graph-analytics
+        port: 8092
+        portName: http
+        readinessPath: /healthz
+        livenessPath: /healthz
+        resources:
+          requests: {cpu: 200m, memory: 256Mi}
+          limits: {cpu: "1", memory: 1Gi}
+      - name: worker
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/graph-analytics
+        resources:
+          requests: {cpu: 500m, memory: 512Mi}
+          limits: {cpu: "2", memory: 2Gi}
+  alerting:
+    enabled: true
+    replicas: 2
+    service: {port: 8091, targetPort: http}
+    containers:
+      - name: policy-api
+        image: signalchord-python
+        command: [uvicorn, app:app, --host, 0.0.0.0, --port, "8091"]
+        workingDir: /workspace/services/velato-engine
+        port: 8091
+        portName: http
+        readinessPath: /healthz
+        livenessPath: /healthz
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+      - name: policy-worker
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/velato-engine
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+      - name: alert-projector
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/alert-projector
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+      - name: notification-worker
+        image: signalchord-python
+        command: [python, worker.py]
+        workingDir: /workspace/services/notification-worker
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: 500m, memory: 512Mi}
+  realtime:
+    enabled: true
+    replicas: 2
+    service: {port: 8088, targetPort: http}
+    containers:
+      - name: gateway
+        image: signalchord-realtime-gateway
+        port: 8088
+        portName: http
+        readinessPath: /healthz
+        livenessPath: /healthz
+        resources:
+          requests: {cpu: 100m, memory: 128Mi}
+          limits: {cpu: "1", memory: 512Mi}
+  web:
+    enabled: true
+    replicas: 2
+    service: {port: 80, targetPort: http}
+    containers:
+      - name: web
+        image: signalchord-web
+        port: 8080
+        portName: http
+        readinessPath: /healthz
+        livenessPath: /healthz
+        resources:
+          requests: {cpu: 50m, memory: 64Mi}
+          limits: {cpu: 500m, memory: 256Mi}
+
+feedCollector:
+  enabled: true
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  image: signalchord-feed-collector
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+migrationJob:
+  enabled: true
+  image: signalchord-control-plane
+  command: [bin/rails, db:prepare]
+
+networkPolicy:
+  enabled: true
+  dnsNamespace: kube-system
+  dnsPodLabels: {k8s-app: kube-dns}
+  ingressNamespace: ingress-nginx
+  allowedNamespaces:
+    - {name: kafka, ports: [9093, 443]}
+    - {name: database, ports: [5432]}
+    - {name: graph, ports: [7687, 443]}
+    - {name: cache, ports: [6379]}
+    - {name: storage, ports: [9000, 443]}
+    - {name: search, ports: [9200, 443]}
+    - {name: observability, ports: [4317, 4318]}
+  publicInternetEgress:
+    enabled: false
+    workloads: [ingestion, alerting, feed-collector]
+    cidrs: [0.0.0.0/0]
+    ports: [80, 443]
+
+ingress:
+  enabled: false
+  className: nginx
+  host: app.signalchord.example
+  tlsSecretName: signalchord-tls

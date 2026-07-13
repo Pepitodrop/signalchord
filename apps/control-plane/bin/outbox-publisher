@@ -1,0 +1,16 @@
+#!/usr/bin/env ruby
+require_relative "../config/environment"
+
+interval = Float(ENV.fetch("OUTBOX_POLL_INTERVAL_SECONDS", "1"))
+trap("TERM") { exit }
+trap("INT") { exit }
+
+loop do
+  begin
+    published = Outbox::Publisher.new.publish_batch
+    sleep(interval) if published.zero?
+  rescue StandardError => error
+    Rails.logger.error(message: "outbox loop failed", error: error.class.name)
+    sleep([interval * 5, 30].min)
+  end
+end
