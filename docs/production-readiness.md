@@ -69,6 +69,12 @@ Repository-side capacity evidence now includes a versioned load scenario and mac
 
 Issue #27 still requires external staging evidence before closure: raw load results for expected, burst and degraded-dependency profiles, managed dependency metrics, Kafka lag analysis, database/search/graph index measurements, Kubernetes resource and autoscaling updates based on measurements, and an approved provider-specific cost model.
 
+## Issue #26 repository progress
+
+Repository-side recovery evidence now includes `recovery/recovery-matrix.json`, CI validation in `scripts/validate_recovery.py`, failure-covering validator tests, `docs/recovery-architecture.md`, backup/restore and rollback/forward-repair runbooks, and release-checklist links for backup, replay, rebuild, failure injection and rollback evidence.
+
+Issue #26 still requires external staging evidence before closure: PostgreSQL, Kafka, object-storage and Neo4j restore drills; OpenSearch rebuild validation; duplicate-delivery and replay results; immutable-digest rollback evidence; canary outputs; and business/security approval of actual RPO/RTO residual risk.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.
