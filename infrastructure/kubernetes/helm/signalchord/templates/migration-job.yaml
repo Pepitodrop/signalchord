@@ -23,6 +23,8 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: migrate
@@ -44,6 +46,10 @@ spec:
             - secretRef: {name: {{ .Values.global.existingSecret }}}
           securityContext:
             allowPrivilegeEscalation: false
+            privileged: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           volumeMounts:

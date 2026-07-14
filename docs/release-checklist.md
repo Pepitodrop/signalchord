@@ -61,6 +61,7 @@ Evidence:
 Evidence:
 
 - Rendered manifests and policy results:
+- Kubernetes hardening evidence: `docs/kubernetes-hardening.md`; CI renders staging and production manifests, runs `scripts/validate_helm_policy.py`, and dry-runs production manifests in a disposable kind cluster.
 - Infrastructure plan/change record:
 - Capacity-based resource configuration:
 

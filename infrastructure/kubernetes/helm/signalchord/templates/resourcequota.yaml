@@ -1,0 +1,11 @@
+{{- if .Values.resourceQuota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: signalchord-runtime
+  labels:
+    app.kubernetes.io/part-of: signalchord
+spec:
+  hard:
+    {{- toYaml .Values.resourceQuota.hard | nindent 4 }}
+{{- end }}

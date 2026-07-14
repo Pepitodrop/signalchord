@@ -10,6 +10,13 @@ metadata:
     app.kubernetes.io/part-of: signalchord
 spec:
   replicas: {{ $workload.replicas }}
+  revisionHistoryLimit: {{ $.Values.rollout.revisionHistoryLimit }}
+  minReadySeconds: {{ $.Values.rollout.minReadySeconds }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ $.Values.rollout.maxUnavailable }}
+      maxSurge: {{ $.Values.rollout.maxSurge }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ $name }}
@@ -25,6 +32,8 @@ spec:
       terminationGracePeriodSeconds: {{ $.Values.global.terminationGracePeriodSeconds }}
       securityContext:
         runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
         seccompProfile: {type: RuntimeDefault}
       {{- if $.Values.topologySpread.enabled }}
       topologySpreadConstraints:
@@ -71,6 +80,10 @@ spec:
             - secretRef: {name: {{ $.Values.global.existingSecret }}}
           securityContext:
             allowPrivilegeEscalation: false
+            privileged: false
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
             readOnlyRootFilesystem: true
             capabilities: {drop: [ALL]}
           resources:
