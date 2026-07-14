@@ -14,7 +14,101 @@ paths:
       security: []
       summary: Exchange credentials or an external identity assertion for a session
       responses:
-        '200': {description: Session established}
+        '201': {description: Session established}
+    delete:
+      tags: [Authentication]
+      summary: Revoke the current session token
+      responses:
+        '204': {description: Session revoked}
+  /sessions:
+    get:
+      tags: [Authentication]
+      summary: List the current user's active tenant sessions
+      responses: {'200': {description: Session list}}
+  /sessions/{id}:
+    delete:
+      tags: [Authentication]
+      summary: Revoke one of the current user's tenant sessions
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses:
+        '204': {description: Session revoked}
+  /invitations:
+    get:
+      tags: [Onboarding]
+      summary: List tenant invitations for owners and admins
+      responses: {'200': {description: Invitation list}}
+    post:
+      tags: [Onboarding]
+      summary: Create a tenant invitation
+      responses: {'201': {description: Invitation created with one-time token}}
+  /invitations/{id}:
+    delete:
+      tags: [Onboarding]
+      summary: Revoke an open tenant invitation
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses:
+        '204': {description: Invitation revoked}
+  /invitations/accept:
+    post:
+      tags: [Onboarding]
+      security: []
+      summary: Accept a tenant invitation and create a session
+      responses:
+        '201': {description: Invitation accepted and session established}
+        '401': {description: Invitation token is invalid, expired, accepted or revoked}
+  /memberships:
+    get:
+      tags: [Administration]
+      summary: List tenant memberships for owners and admins
+      responses: {'200': {description: Membership list}}
+  /memberships/{id}:
+    patch:
+      tags: [Administration]
+      summary: Update tenant membership role or disabled state
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses: {'200': {description: Membership updated}}
+    delete:
+      tags: [Administration]
+      summary: Suspend a tenant membership and revoke its active sessions
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses:
+        '204': {description: Membership suspended}
+        '403': {description: Last enabled owner cannot be removed}
+  /usage_limit:
+    get:
+      tags: [Administration]
+      summary: Show tenant usage limits and billing state
+      responses: {'200': {description: Usage limit}}
+    patch:
+      tags: [Administration]
+      summary: Update tenant usage limits and billing state
+      responses: {'200': {description: Usage limit updated}}
+  /support_tickets:
+    get:
+      tags: [Support]
+      summary: List tenant support tickets
+      responses: {'200': {description: Support ticket list}}
+    post:
+      tags: [Support]
+      summary: Open a tenant-scoped support, incident, security, billing or data request
+      responses: {'201': {description: Support ticket created}}
+  /support_tickets/{id}:
+    get:
+      tags: [Support]
+      summary: Show a tenant support ticket
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses: {'200': {description: Support ticket}}
+    patch:
+      tags: [Support]
+      summary: Update support ticket status or severity; owner/admin only
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses: {'200': {description: Support ticket updated}}
   /organizations:
     get:
       tags: [Organizations]
@@ -179,6 +273,11 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    Uuid:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
     StableId:
       name: stable_id
       in: path

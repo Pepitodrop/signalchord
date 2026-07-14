@@ -87,6 +87,12 @@ Repository-side model and alert-quality evidence now includes `quality/evaluatio
 
 Issue #31 still requires external evidence before closure: legally usable representative evaluation datasets, annotation QA, release-candidate metrics on the exact model/rule/configuration versions, segmented bias/domain/language analysis, production quality dashboards, and product/legal/business approval of false-positive and false-negative budgets.
 
+## Issue #32 repository progress
+
+Repository-side product-operations evidence now includes invitation-based tenant onboarding, user session listing and revocation, membership suspension with token revocation, owner/admin membership administration with last-owner protection, tenant-local usage and billing write gates, support-ticket intake/status workflow, notification invalid-token disablement and CI validation for product-readiness evidence in `product/readiness-checklist.json`.
+
+Issue #32 still requires external evidence before closure: production email delivery and recovery proof, MFA provider/decision evidence, mobile signing and push credentials, billing provider integration and reconciliation, approved terms/privacy/acceptable-use materials, support escalation commitments and a representative customer acceptance test in staging.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.

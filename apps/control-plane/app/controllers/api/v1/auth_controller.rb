@@ -13,7 +13,7 @@ module Api
         user = User.find_by(email:)
         organization = Organization.find_by(slug: organization_slug)
         membership = Membership.find_by(user:, organization:) if user && organization
-        unless user&.authenticate(password) && membership && user.disabled_at.nil?
+        unless user&.authenticate(password) && membership && user.disabled_at.nil? && membership.disabled_at.nil?
           return render json: { error: "invalid_credentials" }, status: :unauthorized
         end
 
