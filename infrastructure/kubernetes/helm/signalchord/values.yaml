@@ -62,6 +62,21 @@ topologySpread:
   topologyKey: kubernetes.io/hostname
   whenUnsatisfiable: ScheduleAnyway
 
+rollout:
+  revisionHistoryLimit: 3
+  minReadySeconds: 5
+  maxUnavailable: 0
+  maxSurge: 1
+
+resourceQuota:
+  enabled: true
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "12"
+    limits.memory: 24Gi
+    pods: "60"
+
 # Source modules remain separate in the monorepo, while the initial production
 # topology groups processes that share scaling and release characteristics.
 workloads:

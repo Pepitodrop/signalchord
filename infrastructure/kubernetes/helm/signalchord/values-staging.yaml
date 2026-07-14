@@ -1,0 +1,37 @@
+global:
+  imageTag: sha-0000000
+  environment: staging
+  config:
+    webOrigin: https://staging.signalchord.example
+
+externalSecret:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: signalchord-staging
+
+serviceAccount:
+  workloadAnnotations:
+    control-plane: {}
+    outbox: {}
+    ingestion: {}
+    intelligence: {}
+    projection: {}
+    graph-query: {}
+    graph-analytics: {}
+    alerting: {}
+    realtime: {}
+    web: {}
+    feed-collector: {}
+    migration: {}
+
+ingress:
+  enabled: true
+  host: staging.signalchord.example
+  tlsSecretName: signalchord-staging-tls
+
+networkPolicy:
+  publicInternetEgress:
+    enabled: true
+    workloads: [ingestion, feed-collector]
+    cidrs: [0.0.0.0/0]
+    ports: [80, 443]

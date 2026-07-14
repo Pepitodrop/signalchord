@@ -1,0 +1,38 @@
+global:
+  imageTag: sha-0000000
+  environment: production
+  imagePullPolicy: IfNotPresent
+  config:
+    webOrigin: https://app.signalchord.example
+
+externalSecret:
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: signalchord-production
+
+serviceAccount:
+  workloadAnnotations:
+    control-plane: {}
+    outbox: {}
+    ingestion: {}
+    intelligence: {}
+    projection: {}
+    graph-query: {}
+    graph-analytics: {}
+    alerting: {}
+    realtime: {}
+    web: {}
+    feed-collector: {}
+    migration: {}
+
+ingress:
+  enabled: true
+  host: app.signalchord.example
+  tlsSecretName: signalchord-production-tls
+
+networkPolicy:
+  publicInternetEgress:
+    enabled: true
+    workloads: [ingestion, feed-collector]
+    cidrs: [0.0.0.0/0]
+    ports: [80, 443]

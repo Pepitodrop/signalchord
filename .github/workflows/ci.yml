@@ -180,8 +180,39 @@ jobs:
             --set global.imageTag=sha-ci \
             --set global.existingSecret=signalchord-runtime >/tmp/signalchord-manifests.yaml
           test -s /tmp/signalchord-manifests.yaml
+          helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-staging.yaml \
+            --set global.imageTag=sha-1234567 \
+            --set global.existingSecret=signalchord-runtime >/tmp/signalchord-staging.yaml
+          python3 scripts/validate_helm_policy.py /tmp/signalchord-staging.yaml --environment staging
+          helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
+            --set global.imageTag=sha-1234567 \
+            --set global.existingSecret=signalchord-runtime >/tmp/signalchord-production.yaml
+          python3 scripts/validate_helm_policy.py /tmp/signalchord-production.yaml --environment production
       - name: Validate JSON documents
         run: find . -type f -name '*.json' -not -path './node_modules/*' -print0 | xargs -0 -n1 python3 -m json.tool >/dev/null
+
+  helm-disposable-cluster:
+    runs-on: ubuntu-latest
+    needs: [repository-quality]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: signalchord-chart
+      - name: Dry-run production chart in disposable cluster
+        run: |
+          kubectl create namespace signalchord
+          helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --namespace signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
+            --set global.imageTag=sha-1234567 \
+            --set global.existingSecret=signalchord-runtime \
+            --set externalSecret.enabled=false >/tmp/signalchord-production.yaml
+          kubectl apply --namespace signalchord --dry-run=client --validate=false -f /tmp/signalchord-production.yaml
+          kubectl get namespace signalchord
 
   security:
     runs-on: ubuntu-latest
@@ -216,7 +247,7 @@ jobs:
 
   docker-build:
     runs-on: ubuntu-latest
-    needs: [typescript, go, python, rails, schemas, repository-quality]
+    needs: [typescript, go, python, rails, schemas, repository-quality, helm-disposable-cluster]
     steps:
       - uses: actions/checkout@v4
       - name: Build service images

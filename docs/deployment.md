@@ -60,6 +60,8 @@ The migration Job runs as a pre-install/pre-upgrade Helm hook. Review migrations
 
 See [Secrets, identities, and encrypted transport](secrets-and-transport.md) for required secret-store mappings, per-workload service accounts, Kafka ACL expectations, transport requirements and rotation evidence. Do not deploy production with local Compose credentials, plaintext service URLs or a manually created Kubernetes Secret that bypasses the managed secret store.
 
+See [Kubernetes and Helm hardening](kubernetes-hardening.md) for environment overlays, manifest policy checks, restricted pod settings, NetworkPolicy expectations and the remaining cluster-side evidence required for issue #25.
+
 ## Autoscaling
 
 HPA support is included but disabled. Enable it only after measurement. For Kafka workers, consumer lag and processing latency are generally more useful than CPU alone, and replica counts cannot usefully exceed relevant topic partitions.

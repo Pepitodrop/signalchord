@@ -45,6 +45,12 @@ Repository-side controls for managed secrets and encrypted transport now include
 
 Issue #24 still requires external staging evidence before closure: real secret-store bindings, workload identity permission review, Kafka ACL allow/deny tests, certificate verification tests against managed dependencies, credential rotation, and provider audit logs.
 
+## Issue #25 repository progress
+
+Repository-side Kubernetes hardening includes credential-free staging and production values overlays, stricter restricted-container settings, rolling-update bounds, resource quota, rendered-manifest policy validation and disposable kind-cluster dry-run validation in CI.
+
+Issue #25 still requires target-cluster evidence before closure: admission policy results, real ExternalSecret CRDs/controllers, NetworkPolicy connectivity tests, ingress TLS evidence and capacity measurements supporting requests, limits and quotas.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.
