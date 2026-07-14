@@ -100,6 +100,23 @@ def build_statement(event: dict[str, Any]) -> Statement:
     properties = _properties(payload)
     tenant_id = _tenant_id(event)
 
+    if mutation_type == "mark_source_takedown":
+        return Statement(
+            query=(
+                "MATCH (source:GraphNode {tenant_id: $tenant_id, stable_id: $stable_id}) "
+                "SET source.takedown_status = 'requested', source += $properties "
+                "WITH source "
+                "OPTIONAL MATCH (article:GraphNode)-[:PUBLISHED]->(source) "
+                "SET article.takedown_status = 'source_requested' "
+                "RETURN source.stable_id AS stable_id"
+            ),
+            parameters={
+                "stable_id": stable_id,
+                "tenant_id": tenant_id,
+                "properties": properties | {"tenant_id": tenant_id},
+            },
+        )
+
     labels = NODE_LABELS.get(mutation_type)
     if mutation_type == "upsert_entity":
         entity_type = _required_string(payload, "entity_type")

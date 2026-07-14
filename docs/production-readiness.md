@@ -75,6 +75,12 @@ Repository-side recovery evidence now includes `recovery/recovery-matrix.json`, 
 
 Issue #26 still requires external staging evidence before closure: PostgreSQL, Kafka, object-storage and Neo4j restore drills; OpenSearch rebuild validation; duplicate-delivery and replay results; immutable-digest rollback evidence; canary outputs; and business/security approval of actual RPO/RTO residual risk.
 
+## Issue #30 repository progress
+
+Repository-side data/source governance evidence now includes `governance/source-inventory.json`, `governance/retention-policy.json`, CI validation in `scripts/validate_governance.py`, failure-covering validator tests, source enablement validation, feed-collector approved-policy enforcement, authenticated/idempotent governance request APIs for tenant export, tenant deletion and source takedown, and search/graph projector handling for source takedown propagation.
+
+Issue #30 still requires external evidence before closure: actual third-party source contracts and robots/terms review, privacy/security/legal approval, production subprocessor and regional-residency records, provider-retention configuration proof, backup deletion reconciliation, subject-specific rights workflows, and synthetic end-to-end deletion/export evidence from a staging-like environment.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.

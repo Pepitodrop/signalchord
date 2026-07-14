@@ -47,6 +47,7 @@ def ensure_indexes(client: OpenSearch) -> None:
             "properties": {
                 "tenant_id": {"type": "keyword"},
                 "document_id": {"type": "keyword"},
+                "source_id": {"type": "keyword"},
                 "title": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
                 "canonical_url": {"type": "keyword"},
                 "content": {"type": "text"},
@@ -101,6 +102,7 @@ def project(client: OpenSearch, storage, event: dict) -> None:
             body={
                 "tenant_id": tenant_id,
                 "document_id": payload["document_id"],
+                "source_id": payload.get("source_id"),
                 "title": payload.get("title"),
                 "canonical_url": payload.get("canonical_url"),
                 "content": content,
@@ -109,6 +111,10 @@ def project(client: OpenSearch, storage, event: dict) -> None:
             },
             refresh=False,
         )
+    elif event_type == "source.takedown.requested.v1":
+        source_id = payload["source_id"]
+        query = {"query": {"bool": {"filter": [{"term": {"tenant_id": tenant_id}}, {"term": {"source_id": source_id}}]}}}
+        client.delete_by_query(index="signalchord-articles", body=query, refresh=True, conflicts="proceed")
     elif event_type == "entity.resolved.v1":
         client.index(
             index="signalchord-entities",
@@ -161,7 +167,7 @@ def main() -> None:
     client = search_client()
     storage = storage_client()
     ensure_indexes(client)
-    consumer.subscribe(["document.normalized.v1", "entity.resolved.v1", "claim.clustered.v1"])
+    consumer.subscribe(["document.normalized.v1", "entity.resolved.v1", "claim.clustered.v1", "source.takedown.requested.v1"])
     try:
         while running:
             message = consumer.poll(1.0)

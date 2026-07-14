@@ -30,9 +30,9 @@ Evidence:
 
 Evidence:
 
-- Approved source inventory:
+- Approved source inventory: repository-side fixture/control in `governance/source-inventory.json`; real production legal approvals still required.
 - Privacy/security review:
-- Retention/deletion test:
+- Retention/deletion test: repository-side retention matrix in `governance/retention-policy.json`; API/projector tests and `scripts/validate_governance.py`; staging deletion/export drill evidence still required.
 
 ## 3. Identity, secrets, and transport
 

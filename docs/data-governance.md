@@ -4,6 +4,10 @@
 
 Each source record contains owner/publisher, acquisition method, terms/robots review state, license category, allowed content fields, raw retention, derived-data permission, geographic restrictions, crawl rate, deletion contact and review date. A collector cannot run without an active ingestion policy.
 
+Repository-side source inventory lives in `governance/source-inventory.json`. It is a fixture and control schema, not a legal approval record for production third-party data. `scripts/validate_governance.py` fails CI if an enabled source record lacks owner, legal basis, permitted uses, attribution, terms/robots status, geography, retention, deletion obligations and review dates.
+
+The control-plane `Source` model refuses to enable a source unless `rights_status` is `approved` and `policy_metadata` contains the required inventory fields. The feed collector also fails closed in production unless `SOURCE_POLICY_JSON` matches the configured source ID and has approved rights plus complete inventory metadata. Discovery events carry source-policy attributes for downstream audit.
+
 ## Provenance classes
 
 - **Source report:** what a source explicitly published.
@@ -27,19 +31,26 @@ The UI and APIs retain these labels and never collapse them into one generic fac
 
 Retention is the minimum of source rights, tenant plan and legal requirement. Raw documents use immutable object versions plus deletion tombstones; event retention is topic-specific; derived graph elements can be retracted/closed temporally while preserving a minimal audit record where legally permissible.
 
+The repository retention matrix is `governance/retention-policy.json`. It covers PostgreSQL, Kafka, object storage, Neo4j, OpenSearch, Redis, telemetry and backups. Production launch still requires provider-specific retention settings, subprocessor records, regional storage decisions and legal/privacy approval.
+
 ## Deletion workflow
 
 1. Disable the source or identify subject/user scope.
-2. Publish a signed deletion request and tombstone.
-3. Delete or quarantine raw objects and search projections.
-4. Retract/delete eligible graph facts and evidence links.
-5. Expire caches and downstream exports where controlled.
-6. Record completion, exceptions and legal holds in audit storage.
-7. Reconciliation confirms no active projection remains.
+2. Create an authenticated `governance_request` with an idempotency key.
+3. Publish a lifecycle event such as `tenant.deletion.requested.v1` or `source.takedown.requested.v1`.
+4. Delete or quarantine raw objects and search projections.
+5. Retract/delete eligible graph facts and evidence links.
+6. Expire caches and downstream exports where controlled.
+7. Record completion, exceptions and legal holds in audit storage.
+8. Reconciliation confirms no active projection remains.
+
+The repository implementation now provides authenticated, audited and idempotent API records for tenant export, tenant deletion and source takedown. Source takedown disables the source, emits a lifecycle event for search deletion and emits a graph mutation to mark the tenant/source subgraph. Real production deletion remains blocked until object-storage, Kafka replay, backups, telemetry and managed-provider retention evidence is attached.
 
 ## User rights
 
 Provide tenant data export, personal account export, account deletion, token revocation and notification preference controls. Exports contain provenance and status so disputed/retracted material is not misrepresented.
+
+The current repository export workflow returns a tenant-scoped snapshot of organization metadata, sources, watchlists, alerts, policies and investigations, and excludes token digests and encrypted notification tokens. Subject-specific correction/deletion UX and legal hold workflows remain product/legal blockers.
 
 ## Quality and review
 

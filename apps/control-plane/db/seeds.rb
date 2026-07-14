@@ -24,7 +24,19 @@ source.assign_attributes(
   adapter: "rss",
   rights_status: "approved",
   enabled: true,
-  policy_metadata: { fixture: true, license: "repository-owned" }
+  raw_retention_days: 30,
+  policy_metadata: {
+    owner: "news-ops",
+    legal_basis: "first_party_fixture",
+    permitted_uses: ["development_test", "synthetic_e2e"],
+    attribution: "Synthetic SignalChord fixture",
+    terms_status: "first_party_fixture",
+    geography: ["local"],
+    retention_days: 30,
+    deletion_obligations: ["delete_raw_and_derived_on_request"],
+    fixture: true,
+    license: "repository-owned"
+  }
 )
 source.save!
 

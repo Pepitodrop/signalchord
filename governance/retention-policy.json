@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "default_region": "US",
+  "stores": [
+    {
+      "store": "postgresql",
+      "classification": "tenant_metadata",
+      "authoritative": true,
+      "retention_days": 2555,
+      "deletion_action": "delete_or_anonymize_subject_rows",
+      "backup_retention_days": 35,
+      "owner": "control-plane"
+    },
+    {
+      "store": "kafka",
+      "classification": "event_metadata",
+      "authoritative": false,
+      "retention_days": 30,
+      "deletion_action": "emit_tombstone_and_prevent_replay",
+      "backup_retention_days": 30,
+      "owner": "platform"
+    },
+    {
+      "store": "object_storage",
+      "classification": "raw_and_normalized_documents",
+      "authoritative": true,
+      "retention_days": 30,
+      "deletion_action": "delete_tenant_source_prefix_and_write_tombstone",
+      "backup_retention_days": 35,
+      "owner": "ingestion"
+    },
+    {
+      "store": "neo4j",
+      "classification": "derived_graph",
+      "authoritative": false,
+      "retention_days": 30,
+      "deletion_action": "mark_or_delete_tenant_source_subgraph",
+      "backup_retention_days": 35,
+      "owner": "graph"
+    },
+    {
+      "store": "opensearch",
+      "classification": "derived_search",
+      "authoritative": false,
+      "retention_days": 30,
+      "deletion_action": "delete_by_tenant_and_source",
+      "backup_retention_days": 0,
+      "owner": "search"
+    },
+    {
+      "store": "redis",
+      "classification": "cache_and_dedupe",
+      "authoritative": false,
+      "retention_days": 90,
+      "deletion_action": "expire_or_delete_cache_keys",
+      "backup_retention_days": 0,
+      "owner": "platform"
+    },
+    {
+      "store": "telemetry",
+      "classification": "operational_metadata",
+      "authoritative": false,
+      "retention_days": 30,
+      "deletion_action": "scrub_personal_data_and_apply_retention",
+      "backup_retention_days": 0,
+      "owner": "operations"
+    }
+  ],
+  "regional_requirements": [
+    {
+      "region": "US",
+      "allowed_stores": ["postgresql", "kafka", "object_storage", "neo4j", "opensearch", "redis", "telemetry"],
+      "notes": "Repository fixture only; production residency requires provider evidence."
+    }
+  ],
+  "subprocessors_required_before_launch": true
+}
