@@ -13,6 +13,44 @@ The implementation preserves the original checked-in channel-0 policy byte-for-b
 
 The first positive-velocity note defines the root pitch. Every later positive-velocity note selects an instruction by `(note - root) mod 12`; its MIDI channel selects the instruction bank. Velocity carries operands only for `PUSH_CONST`, `LOAD_INPUT`, `LOAD_LOCAL` and `STORE_LOCAL`.
 
+## Standard policy functions
+
+`standard_library.py` adds reusable, audited policy macros on top of the sealed IR. These functions emit ordinary Velato instructions and remain subject to the same static analysis and runtime limits.
+
+| Function | Purpose |
+| --- | --- |
+| `PolicyBuilder` | Fluent construction of constants, inputs, arithmetic, normalization, comparisons and output stores. |
+| `weighted_sum` | Combine named SignalChord inputs using explicit positive or negative weights. |
+| `weighted_average` | Produce a normalized weighted result while rejecting zero total weight. |
+| `all_conditions` / `any_condition` | Compose multiple policy conditions with deterministic boolean logic. |
+| `input_at_least` / `input_at_most` / `input_between` | Reusable threshold and range predicates. |
+| `severity_bands` | Convert a score into ordered low, medium, high and critical severity codes. |
+| `route_when` | Select and store a routing code from a policy condition. |
+| `suppress_when` | Store the suppression flag from a policy condition. |
+| `standard_alert_policy` | Build a complete score, severity, routing and suppression policy from weighted inputs. |
+
+Example:
+
+```python
+from engine import execute
+from standard_library import standard_alert_policy
+
+policy = standard_alert_policy(
+    [
+        ("watchlist_match", 4),
+        ("novelty", 3),
+        ("entity_relevance", 2),
+        ("source_trust", 1),
+    ],
+    suppress_below=15,
+    default_route=7,
+)
+
+result = execute(policy, inputs)
+```
+
+The library is deliberately a macro layer, not a privileged runtime. It cannot perform network, filesystem or shell operations and cannot create unbounded loops or jumps.
+
 ## Authoring and API
 
 The engine supports both MIDI and a small auditable assembly notation:
