@@ -67,6 +67,28 @@ jobs:
           corepack prepare pnpm@10.12.1 --activate
           pnpm install --frozen-lockfile
           git diff --exit-code -- pnpm-lock.yaml apps/control-plane/Gemfile.lock services/go.sum
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Generate source SBOM
+        run: syft dir:. -o spdx-json=sbom-source.spdx.json
+      - name: Scan release source dependencies and filesystem
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          output: trivy-source.txt
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Upload source supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-supply-chain
+          path: |
+            sbom-source.spdx.json
+            trivy-source.txt
+          if-no-files-found: error
 
   publish-images:
     needs: verify
@@ -101,6 +123,7 @@ jobs:
         with:
           ref: ${{ needs.verify.outputs.sha }}
       - uses: docker/setup-buildx-action@v3
+      - uses: anchore/sbom-action/download-syft@v0
       - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -121,16 +144,51 @@ jobs:
           sbom: true
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+      - name: Generate final-image SBOM
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: syft "$IMAGE@$DIGEST" -o spdx-json="sbom-image-${{ matrix.name }}.spdx.json"
+      - name: Scan final image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}@${{ steps.build.outputs.digest }}
+          format: table
+          output: trivy-image-${{ matrix.name }}.txt
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
       - name: Sign immutable image digest
         env:
           IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
+      - name: Verify image signature
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          CERT_IDENTITY_RE: https://github.com/Pepitodrop/signalchord/.github/workflows/release.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)
+        run: >-
+          cosign verify
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          --certificate-identity-regexp "$CERT_IDENTITY_RE"
+          "$IMAGE@$DIGEST" > "cosign-verify-${{ matrix.name }}.txt"
       - uses: actions/attest-build-provenance@v2
         with:
           subject-name: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
+      - name: Verify provenance attestation
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          CERT_IDENTITY_RE: https://github.com/Pepitodrop/signalchord/.github/workflows/release.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)
+        run: >-
+          cosign verify-attestation
+          --type slsaprovenance
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          --certificate-identity-regexp "$CERT_IDENTITY_RE"
+          "$IMAGE@$DIGEST" > "cosign-attestation-${{ matrix.name }}.txt"
       - name: Record immutable digest
         shell: bash
         env:
@@ -142,6 +200,17 @@ jobs:
           name: digest-${{ matrix.name }}
           path: digest-${{ matrix.name }}.txt
           if-no-files-found: error
+      - name: Upload image supply-chain evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: supply-chain-${{ matrix.name }}
+          path: |
+            sbom-image-${{ matrix.name }}.spdx.json
+            trivy-image-${{ matrix.name }}.txt
+            cosign-verify-${{ matrix.name }}.txt
+            cosign-attestation-${{ matrix.name }}.txt
+          if-no-files-found: warn
 
   release:
     needs: [verify, publish-images]
@@ -155,14 +224,27 @@ jobs:
           pattern: digest-*
           merge-multiple: true
           path: release-digests
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*supply-chain*'
+          merge-multiple: true
+          path: release-supply-chain
       - name: Build release manifest
         shell: bash
         run: |
           set -euo pipefail
           cat release-digests/digest-*.txt | sort > image-digests.txt
-          sha256sum image-digests.txt > SHA256SUMS
           git archive --format=tar.gz --prefix="signalchord-${{ needs.verify.outputs.tag }}/" -o "signalchord-${{ needs.verify.outputs.tag }}.tar.gz" HEAD
-          sha256sum "signalchord-${{ needs.verify.outputs.tag }}.tar.gz" >> SHA256SUMS
+          python3 scripts/release_manifest.py build \
+            --tag "${{ needs.verify.outputs.tag }}" \
+            --commit "${{ needs.verify.outputs.sha }}" \
+            --digests-dir release-digests \
+            --sbom-dir release-supply-chain \
+            --scan-dir release-supply-chain \
+            --source-archive "signalchord-${{ needs.verify.outputs.tag }}.tar.gz" \
+            --output release-manifest.json
+          python3 scripts/release_manifest.py validate --file release-manifest.json
+          sha256sum image-digests.txt release-manifest.json release-supply-chain/* "signalchord-${{ needs.verify.outputs.tag }}.tar.gz" > SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.verify.outputs.tag }}
@@ -170,5 +252,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             image-digests.txt
+            release-manifest.json
+            release-supply-chain/*
             SHA256SUMS
             signalchord-${{ needs.verify.outputs.tag }}.tar.gz

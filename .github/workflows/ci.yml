@@ -153,6 +153,23 @@ jobs:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: find scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
+      - run: python3 scripts/test_release_manifest.py
+      - name: Verify release Dockerfile bases are digest-pinned
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import sys
+
+          failures = []
+          for path in Path("infrastructure/docker").rglob("Dockerfile"):
+              for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+                  if line.startswith("FROM ") and "@sha256:" not in line:
+                      failures.append(f"{path}:{line_number}: {line}")
+          if failures:
+              print("Release Dockerfile base images must be pinned by digest.", file=sys.stderr)
+              print("\n".join(failures), file=sys.stderr)
+              sys.exit(1)
+          PY
       - run: docker compose --profile slice config --quiet
       - uses: azure/setup-helm@v4
       - name: Validate Helm chart
