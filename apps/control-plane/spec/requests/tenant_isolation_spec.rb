@@ -141,6 +141,22 @@ RSpec.describe "tenant isolation", type: :request do
     expect(response).to have_http_status(:unauthorized)
   end
 
+  it "throttles repeated authentication attempts by IP" do
+    Rack::Attack.cache.store.clear
+
+    30.times do
+      post "/api/v1/auth/session",
+           params: { email: alpha_user.email, password: "wrong-password", organization_slug: alpha.slug }
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    post "/api/v1/auth/session",
+         params: { email: alpha_user.email, password: "wrong-password", organization_slug: alpha.slug }
+    expect(response).to have_http_status(:too_many_requests)
+  ensure
+    Rack::Attack.cache.store.clear
+  end
+
   it "sets secure response headers on API responses" do
     get "/api/v1/sources", headers: auth_headers
 

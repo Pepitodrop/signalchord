@@ -63,6 +63,12 @@ Repository-side observability evidence includes documented SLIs/SLOs, Prometheus
 
 Issue #28 still requires external staging evidence before closure: dashboard exports or screenshots, sample distributed traces, real alert firing/resolution records, paging/routing configuration, telemetry-retention settings from the deployed provider and at least one completed incident or game-day exercise.
 
+## Issue #27 repository progress
+
+Repository-side capacity evidence now includes a versioned load scenario and machine-readable result contract in `load/scenarios/signalchord-capacity-v1.json`, a CI-enforced validator in `scripts/validate_capacity.py`, a validator test with failure coverage, and `docs/capacity-plan.md` for workload profiles, thresholds, Kafka partition assumptions, autoscaling signals, runtime limits and cost-model evidence.
+
+Issue #27 still requires external staging evidence before closure: raw load results for expected, burst and degraded-dependency profiles, managed dependency metrics, Kafka lag analysis, database/search/graph index measurements, Kubernetes resource and autoscaling updates based on measurements, and an approved provider-specific cost model.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.

@@ -109,9 +109,9 @@ Evidence:
 
 Evidence:
 
-- Load-test report:
-- Capacity model:
-- Cost model:
+- Load-test report: scenario and result contract are versioned in `load/scenarios/signalchord-capacity-v1.json`; CI validates the contract with `scripts/validate_capacity.py`. Staging/raw load results are still required.
+- Capacity model: repository-side plan in `docs/capacity-plan.md`; production resource updates still require measured staging evidence.
+- Cost model: model inputs are documented in `docs/capacity-plan.md`; provider-specific bill of materials and business approval still required.
 
 ## 8. Observability and incident response
 

@@ -1,0 +1,32 @@
+{
+  "scenario_id": "signalchord-capacity-v1",
+  "environment": "repository-smoke",
+  "profile": "expected",
+  "started_at": "2026-07-14T00:00:00Z",
+  "completed_at": "2026-07-14T00:05:00Z",
+  "git_sha": "repository-fixture",
+  "metrics": {
+    "article_to_alert": {
+      "p95_latency_ms": 120000,
+      "error_rate": 0.0,
+      "max_kafka_lag_seconds": 30,
+      "max_queue_age_seconds": 45,
+      "cpu_saturation": 0.35,
+      "memory_saturation": 0.40
+    },
+    "control_plane_api": {
+      "p95_latency_ms": 250,
+      "error_rate": 0.0,
+      "cpu_saturation": 0.25,
+      "memory_saturation": 0.30
+    },
+    "realtime_notifications": {
+      "p95_latency_ms": 500,
+      "error_rate": 0.0,
+      "max_queue_age_seconds": 10,
+      "cpu_saturation": 0.20,
+      "memory_saturation": 0.25
+    }
+  },
+  "notes": "Synthetic fixture used only to prove the result contract and validator in CI; it is not production capacity evidence."
+}

@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "scenario_id": "signalchord-capacity-v1",
+  "description": "Repository-owned production capacity scenarios for the article-to-alert path, query APIs, realtime delivery, and notification fan-out.",
+  "fixture_policy": {
+    "source": "synthetic_or_licensed_only",
+    "prohibited": [
+      "customer data",
+      "unlicensed source documents",
+      "production exports"
+    ],
+    "tenant_shape": {
+      "tenants": 3,
+      "sources_per_tenant": 20,
+      "watchlists_per_tenant": 50,
+      "notification_targets_per_tenant": 500
+    }
+  },
+  "profiles": [
+    {
+      "name": "expected",
+      "duration_minutes": 30,
+      "document_discoveries_per_minute": 120,
+      "api_requests_per_second": 35,
+      "realtime_clients": 300,
+      "notification_requests_per_minute": 60
+    },
+    {
+      "name": "burst",
+      "duration_minutes": 15,
+      "document_discoveries_per_minute": 360,
+      "api_requests_per_second": 90,
+      "realtime_clients": 900,
+      "notification_requests_per_minute": 180
+    },
+    {
+      "name": "degraded-dependency",
+      "duration_minutes": 20,
+      "document_discoveries_per_minute": 120,
+      "api_requests_per_second": 25,
+      "realtime_clients": 300,
+      "notification_requests_per_minute": 60,
+      "faults": [
+        "opensearch_p95_latency_2s",
+        "neo4j_write_latency_1s",
+        "notification_provider_429"
+      ]
+    }
+  ],
+  "critical_journeys": [
+    {
+      "name": "article_to_alert",
+      "description": "Document discovery through fetch, normalization, NLP, entity and claim intelligence, graph/search projection, policy execution, alert persistence, realtime fan-out, and notification enqueue.",
+      "thresholds": {
+        "p95_latency_ms": 300000,
+        "error_rate": 0.01,
+        "max_kafka_lag_seconds": 120,
+        "max_queue_age_seconds": 180,
+        "cpu_saturation": 0.75,
+        "memory_saturation": 0.80
+      }
+    },
+    {
+      "name": "control_plane_api",
+      "description": "Authenticated source, watchlist, alert, search, and graph API requests.",
+      "thresholds": {
+        "p95_latency_ms": 750,
+        "error_rate": 0.005,
+        "cpu_saturation": 0.70,
+        "memory_saturation": 0.75
+      }
+    },
+    {
+      "name": "realtime_notifications",
+      "description": "SSE subscription fan-out plus Expo notification worker delivery attempts.",
+      "thresholds": {
+        "p95_latency_ms": 2000,
+        "error_rate": 0.01,
+        "max_queue_age_seconds": 60,
+        "cpu_saturation": 0.70,
+        "memory_saturation": 0.75
+      }
+    }
+  ],
+  "capacity_assumptions": {
+    "kafka_partitions": {
+      "source.document.discovered.v1": 12,
+      "source.document.fetched.v1": 12,
+      "document.normalized.v1": 12,
+      "document.nlp-requested.v1": 12,
+      "graph.mutation-requested.v1": 12,
+      "alert.triggered.v1": 6,
+      "notification.requested.v1": 6
+    },
+    "autoscaling_signals": [
+      "consumer_lag_seconds",
+      "queue_age_seconds",
+      "http_p95_latency_ms",
+      "cpu_saturation",
+      "memory_saturation"
+    ],
+    "safe_scaling_rule": "Do not set consumer replicas above topic partitions for that consumer group; raise partitions and verify replay order before raising max replicas.",
+    "database_measurements_required": [
+      "postgres_connection_count",
+      "postgres_query_p95_ms",
+      "neo4j_write_p95_ms",
+      "neo4j_query_p95_ms",
+      "opensearch_index_p95_ms",
+      "opensearch_query_p95_ms"
+    ]
+  },
+  "controls_under_test": {
+    "api_rate_limit_per_minute": 600,
+    "auth_rate_limit_per_5_minutes": 30,
+    "api_max_body_bytes": 1048576,
+    "ingress_proxy_body_size": "1m",
+    "ingress_proxy_read_timeout_seconds": 3600,
+    "worker_http_timeout_seconds": 15,
+    "search_proxy_timeout_seconds": 5
+  },
+  "result_contract": {
+    "format": "json",
+    "required_top_level_fields": [
+      "scenario_id",
+      "environment",
+      "profile",
+      "started_at",
+      "completed_at",
+      "git_sha",
+      "metrics"
+    ],
+    "metric_units": {
+      "p95_latency_ms": "milliseconds",
+      "error_rate": "ratio",
+      "max_kafka_lag_seconds": "seconds",
+      "max_queue_age_seconds": "seconds",
+      "cpu_saturation": "ratio",
+      "memory_saturation": "ratio"
+    }
+  }
+}
