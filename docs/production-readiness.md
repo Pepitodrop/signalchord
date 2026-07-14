@@ -81,6 +81,12 @@ Repository-side data/source governance evidence now includes `governance/source-
 
 Issue #30 still requires external evidence before closure: actual third-party source contracts and robots/terms review, privacy/security/legal approval, production subprocessor and regional-residency records, provider-retention configuration proof, backup deletion reconciliation, subject-specific rights workflows, and synthetic end-to-end deletion/export evidence from a staging-like environment.
 
+## Issue #32 repository progress
+
+Repository-side product-operations evidence now includes invitation-based tenant onboarding, user session listing and revocation, membership suspension with token revocation, owner/admin membership administration with last-owner protection, tenant-local usage and billing write gates, support-ticket intake/status workflow, notification invalid-token disablement and CI validation for product-readiness evidence in `product/readiness-checklist.json`.
+
+Issue #32 still requires external evidence before closure: production email delivery and recovery proof, MFA provider/decision evidence, mobile signing and push credentials, billing provider integration and reconciliation, approved terms/privacy/acceptable-use materials, support escalation commitments and a representative customer acceptance test in staging.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.

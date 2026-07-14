@@ -2,6 +2,7 @@ module Api
   module V1
     class NotificationEndpointsController < ApplicationController
       before_action -> { require_scope!("api:write") }
+      before_action :require_writable_account!
       before_action :endpoint, only: :destroy
 
       def index
@@ -12,6 +13,7 @@ module Api
 
       def create
         raise Forbidden unless current_api_token.user_id
+        enforce_usage_limit!(:notification_endpoints)
 
         endpoint = NotificationEndpoint.register!(
           organization: current_organization,

@@ -6,4 +6,8 @@ class User < ApplicationRecord
 
   normalizes :email, with: ->(value) { value.strip.downcase }
   validates :email, presence: true, uniqueness: true
+
+  def disabled?
+    disabled_at.present?
+  end
 end

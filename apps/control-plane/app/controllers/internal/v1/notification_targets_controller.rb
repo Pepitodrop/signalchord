@@ -34,6 +34,9 @@ module Internal
           provider_message_id: params[:provider_message_id],
           last_error: params[:last_error]
         )
+        if delivery.status == "failed" && invalid_token_error?(delivery.last_error)
+          delivery.notification_endpoint.update!(enabled: false)
+        end
         render json: { status: delivery.status }
       end
 
@@ -49,6 +52,10 @@ module Internal
         return if valid
 
         head :unauthorized
+      end
+
+      def invalid_token_error?(message)
+        message.to_s.match?(/\A(invalid_token|not_registered|unregistered|device_token_invalid)\b/i)
       end
     end
   end

@@ -2,11 +2,13 @@ module Api
   module V1
     class SourcesController < ApplicationController
       before_action -> { require_scope!("api:write") }, except: %i[index show]
+      before_action :require_writable_account!, except: %i[index show]
       before_action :source, only: %i[show update destroy]
 
       def index = render json: current_organization.sources.order(:name)
       def show = render json: @source
       def create
+        enforce_usage_limit!(:sources)
         record = current_organization.sources.create!(source_params)
         audit!(action: "source.created", target: record)
         render json: record, status: :created

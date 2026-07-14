@@ -2,11 +2,13 @@ module Api
   module V1
     class WatchlistsController < ApplicationController
       before_action -> { require_scope!("api:write") }, except: %i[index show]
+      before_action :require_writable_account!, except: %i[index show]
       before_action :watchlist, only: %i[show update destroy]
 
       def index = render json: current_organization.watchlists.includes(:watchlist_items).map { |record| serialize(record) }
       def show = render json: serialize(@watchlist)
       def create
+        enforce_usage_limit!(:watchlists)
         record = current_organization.watchlists.create!(watchlist_params.except(:items))
         replace_items(record, watchlist_params[:items])
         audit!(action: "watchlist.created", target: record)

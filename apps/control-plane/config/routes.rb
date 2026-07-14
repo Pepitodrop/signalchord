@@ -12,8 +12,15 @@ Rails.application.routes.draw do
   namespace :api do
     namespace :v1 do
       post "auth/session", to: "auth#create"
+      delete "auth/session", to: "sessions#destroy"
+      resources :sessions, only: %i[index destroy]
+      post "invitations/accept", to: "invitations#accept"
       get :search, to: "search#show"
       resources :organizations, only: %i[index show]
+      resources :memberships, only: %i[index update destroy]
+      resources :invitations, only: %i[index create destroy]
+      resource :usage_limit, only: %i[show update]
+      resources :support_tickets, only: %i[index show create update]
       resources :sources
       resources :watchlists
       resources :investigations

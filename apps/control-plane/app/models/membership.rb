@@ -5,4 +5,10 @@ class Membership < ApplicationRecord
   belongs_to :user
   validates :role, inclusion: { in: ROLES }
   validates :user_id, uniqueness: { scope: :organization_id }
+
+  scope :enabled, -> { where(disabled_at: nil) }
+
+  def disabled?
+    disabled_at.present?
+  end
 end

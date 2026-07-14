@@ -139,7 +139,10 @@ Evidence:
 Evidence:
 
 - Model-quality report:
+- Product readiness controls: `docs/product-operations-readiness.md`; machine-readable repository evidence in `product/readiness-checklist.json`; CI validator in `scripts/validate_product_readiness.py`.
 - Product acceptance report:
+- Production email/mobile/billing evidence:
+- Terms/privacy/acceptable-use approval:
 
 ## 10. Final approval
 
