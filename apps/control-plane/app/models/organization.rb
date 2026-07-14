@@ -3,6 +3,7 @@ class Organization < ApplicationRecord
   has_many :users, through: :memberships
   has_many :api_tokens, dependent: :destroy
   has_many :sources, dependent: :destroy
+  has_many :governance_requests, dependent: :destroy
   has_many :watchlists, dependent: :destroy
   has_many :policies, dependent: :destroy
   has_many :alerts, dependent: :destroy

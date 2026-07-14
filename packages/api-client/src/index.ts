@@ -8,7 +8,8 @@ export interface SessionResponse {
   scopes: string[];
 }
 
-export interface SourceRecord { id: string; name: string; endpoint: string; adapter: string; rights_status: string; enabled: boolean; requests_per_minute: number; raw_retention_days: number; }
+export interface SourceRecord { id: string; name: string; endpoint: string; adapter: string; rights_status: string; enabled: boolean; requests_per_minute: number; raw_retention_days: number; policy_metadata?: Record<string, unknown>; }
+export interface GovernanceRequestRecord { id: string; request_type: "tenant_export" | "tenant_deletion" | "source_takedown"; source_id?: string; idempotency_key: string; status: "accepted" | "completed"; parameters: Record<string, unknown>; result: Record<string, unknown>; created_at: string; }
 export interface WatchlistItemRecord { id?: string; target_kind: string; target_stable_id: string; relevance_weight: number | string; }
 export interface WatchlistRecord { id: string; name: string; description?: string; items: WatchlistItemRecord[]; }
 export interface AlertRecord { id: string; stable_id: string; title: string; summary?: string; alert_score: number; severity_code: number; routing_code: number; suppressed: boolean; evidence_ids: string[]; graph_path_ids: string[]; policy_trace: Record<string, unknown>; review_status: string; relevance_feedback?: string; read_at?: string; created_at: string; }
@@ -38,6 +39,8 @@ export class SignalChordClient {
   organizations() { return this.request<Array<{id: string; name: string; slug: string}>>("/api/v1/organizations"); }
   sources() { return this.request<SourceRecord[]>("/api/v1/sources"); }
   createSource(source: Partial<SourceRecord>) { return this.request<SourceRecord>("/api/v1/sources", {method: "POST", body: JSON.stringify({source})}); }
+  governanceRequests() { return this.request<GovernanceRequestRecord[]>("/api/v1/governance_requests"); }
+  createGovernanceRequest(governance_request: Partial<GovernanceRequestRecord>, idempotencyKey: string) { return this.request<GovernanceRequestRecord>("/api/v1/governance_requests", {method: "POST", headers: {"Idempotency-Key": idempotencyKey}, body: JSON.stringify({governance_request})}); }
   watchlists() { return this.request<WatchlistRecord[]>("/api/v1/watchlists"); }
   createWatchlist(watchlist: {name: string; description?: string; items: WatchlistItemRecord[]}) { return this.request<WatchlistRecord>("/api/v1/watchlists", {method: "POST", body: JSON.stringify({watchlist})}); }
   alerts(unread = false) { return this.request<AlertRecord[]>(`/api/v1/alerts${unread ? "?unread=true" : ""}`); }

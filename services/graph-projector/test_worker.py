@@ -99,6 +99,22 @@ def test_relationship_endpoint_identity_includes_tenant_id() -> None:
     assert "MERGE (b:GraphNode {tenant_id: $tenant_id, stable_id: $to_id})" in statement.query
 
 
+def test_source_takedown_marks_only_tenant_scoped_source_and_articles() -> None:
+    statement = build_statement(
+        event(
+            {
+                "mutation_type": "mark_source_takedown",
+                "stable_id": "source:1",
+                "properties": {"reason": "contract_expired"},
+            }
+        )
+    )
+
+    assert "MATCH (source:GraphNode {tenant_id: $tenant_id, stable_id: $stable_id})" in statement.query
+    assert "SET article.takedown_status = 'source_requested'" in statement.query
+    assert statement.parameters["tenant_id"] == "tenant-1"
+
+
 def test_parse_event_rejects_malformed_json() -> None:
     with pytest.raises(PermanentMutationError, match="valid JSON"):
         parse_event(b"{not json")

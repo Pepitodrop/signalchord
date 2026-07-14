@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "status": "repository_fixture",
+  "sources": [
+    {
+      "id": "sample-rss",
+      "name": "Synthetic local RSS fixture",
+      "owner": "news-ops",
+      "rights_status": "approved",
+      "legal_basis": "first_party_fixture",
+      "contract_reference": "not_applicable_fixture",
+      "endpoint_patterns": ["http://sample-source/*", "https://example.com/feed.xml"],
+      "adapter": "rss",
+      "permitted_uses": ["development_test", "synthetic_e2e"],
+      "attribution": "Synthetic SignalChord fixture",
+      "terms_status": "first_party_fixture",
+      "robots_status": "not_applicable_fixture",
+      "geography": ["local", "US"],
+      "retention_days": 30,
+      "deletion_obligations": ["delete_raw_and_derived_on_request", "block_future_reprocessing"],
+      "takedown_contact": "security@example.invalid",
+      "last_reviewed": "2026-07-14",
+      "next_review_due": "2026-10-14"
+    }
+  ]
+}

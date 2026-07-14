@@ -18,6 +18,7 @@ Rails.application.routes.draw do
       resources :watchlists
       resources :investigations
       resources :alerts, only: %i[index show update]
+      resources :governance_requests, only: %i[index show create]
       resources :notification_endpoints, only: %i[index create destroy]
       resources :policies do
         post :simulate, on: :member

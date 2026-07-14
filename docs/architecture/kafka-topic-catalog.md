@@ -8,6 +8,7 @@ All payloads use the versioned `signalchord.v1.EventEnvelope`. Retention values 
 | source.poll.requested.v1 | Request an immediate or scheduled poll | Rails/scheduler | feed-collector | source_id | 7d delete | low | Safe to replay with poll idempotency key |
 | source.document.discovered.v1 | Announce an article/feed entry | feed-collector | document-fetcher | canonical URL hash | 30d delete | possible public author names | Duplicate event produces same fetch key |
 | source.document.fetched.v1 | Describe immutable raw object and HTTP response | document-fetcher | stream-normalizer | document_id | 30d delete | possible public PII | Object URI must exist; storage failure prevents publish |
+| source.takedown.requested.v1 | Disable a source and remove or tombstone tenant/source derived records | Rails governance API | search-projector, recovery/runbooks | source_id | 30d delete | low; lifecycle metadata | Consumers delete or mark only matching tenant/source outputs and block reprocessing |
 | document.normalized.v1 | Publish canonical normalized document metadata | stream-normalizer | search projector, audit | document_id | 90d delete | possible public PII | Rebuild projections and NLP requests |
 | document.duplicate-detected.v1 | Link exact/near duplicate to canonical document | stream-normalizer | claim intelligence, metrics | canonical document_id | 90d delete | same as document | Replay uses stable duplicate edge IDs |
 | document.nlp-requested.v1 | Request semantic extraction | stream-normalizer | nlp-pipeline | document_id | 30d delete | possible public PII | Model/version included in idempotency key |
@@ -26,6 +27,8 @@ All payloads use the versioned `signalchord.v1.EventEnvelope`. Retention values 
 | alert.policy-evaluation-requested.v1 | Evaluate policy inputs and evidence | signal builder | velato-engine/fallback | policy version + signal ID | 30d delete | tenant/watchlist metadata | Exactly one active result per idempotency key |
 | alert.created.v1 | Durable alert outcome | policy engine | realtime gateway, Rails projector | alert_id | 180d delete | tenant/user targeting | Projectors dedupe by alert_id |
 | notification.requested.v1 | Request push/email/webhook delivery | alert projector | notification adapters | recipient/channel | 14d delete | contact data | External side effects use delivery idempotency ledger |
+| tenant.export.requested.v1 | Record an authenticated tenant export request | Rails governance API | governance/runbooks | request_id | 30d delete | tenant metadata | Idempotency key prevents duplicate export request records |
+| tenant.deletion.requested.v1 | Start tenant deletion across authoritative and derived stores | Rails governance API | governance/runbooks, replay controls | request_id | 30d delete | tenant metadata | Idempotency key prevents duplicate side effects; derived stores must tombstone or delete |
 | audit.event.v1 | Append security/product audit fact | all trusted components | audit sink | tenant_id | 7y or tenant policy, delete | may contain actor identifiers | Immutable append; sensitive values redacted |
 
 ## Partition and ordering rules

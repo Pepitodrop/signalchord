@@ -14,9 +14,13 @@ SPEC.loader.exec_module(worker)
 class FakeSearchClient:
     def __init__(self):
         self.indexed: list[dict] = []
+        self.deleted: list[dict] = []
 
     def index(self, **kwargs):
         self.indexed.append(kwargs)
+
+    def delete_by_query(self, **kwargs):
+        self.deleted.append(kwargs)
 
 
 class FakeStorage:
@@ -32,9 +36,10 @@ def test_document_projection_uses_tenant_prefixed_id_and_body_filter_field() -> 
         "event_type": "document.normalized.v1",
         "tenant_id": "tenant-a",
         "occurred_at": "2026-01-01T00:00:00Z",
-        "payload": {
-            "document_id": "doc-1",
-            "clean_text_object_uri": "s3://raw-documents/tenant-a/doc.txt",
+            "payload": {
+                "document_id": "doc-1",
+                "source_id": "source-1",
+                "clean_text_object_uri": "s3://raw-documents/tenant-a/doc.txt",
             "title": "Tenant article",
             "canonical_url": "https://tenant-a.example/article",
         },
@@ -49,6 +54,39 @@ def test_document_projection_uses_tenant_prefixed_id_and_body_filter_field() -> 
     assert indexed["refresh"] is False
     assert indexed["body"]["tenant_id"] == "tenant-a"
     assert indexed["body"]["document_id"] == "doc-1"
+    assert indexed["body"]["source_id"] == "source-1"
+
+
+def test_source_takedown_deletes_only_matching_tenant_source_articles() -> None:
+    client = FakeSearchClient()
+
+    worker.project(
+        client,
+        None,
+        {
+            "event_type": "source.takedown.requested.v1",
+            "tenant_id": "tenant-a",
+            "payload": {"source_id": "source-1"},
+        },
+    )
+
+    assert client.deleted == [
+        {
+            "index": "signalchord-articles",
+            "body": {
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"tenant_id": "tenant-a"}},
+                            {"term": {"source_id": "source-1"}},
+                        ]
+                    }
+                }
+            },
+            "refresh": True,
+            "conflicts": "proceed",
+        }
+    ]
 
 
 def test_entity_and_claim_projection_use_tenant_prefixed_ids() -> None:
