@@ -93,6 +93,27 @@ def test_severity_bands() -> None:
         assert engine.execute(ir, policy_inputs()).severity_code == expected
 
 
+def test_severity_bands_preserves_caller_local_registers() -> None:
+    ir = [
+        engine.Instruction(engine.Op.PUSH_CONST, 123),
+        engine.Instruction(engine.Op.STORE_LOCAL, 15),
+        engine.Instruction(engine.Op.PUSH_CONST, 70),
+        *stdlib.severity_bands(),
+        engine.Instruction(engine.Op.STORE_SEVERITY),
+        engine.Instruction(engine.Op.LOAD_LOCAL, 15),
+        engine.Instruction(engine.Op.STORE_ROUTE),
+        engine.Instruction(engine.Op.PUSH_CONST, 0),
+        engine.Instruction(engine.Op.STORE_SCORE),
+        engine.Instruction(engine.Op.PUSH_CONST, 0),
+        engine.Instruction(engine.Op.STORE_SUPPRESS),
+        engine.Instruction(engine.Op.HALT),
+    ]
+
+    result = engine.execute(ir, policy_inputs())
+    assert result.severity_code == 3
+    assert result.routing_code == 123
+
+
 def test_standard_alert_policy_writes_all_outputs() -> None:
     ir = stdlib.standard_alert_policy(
         [
