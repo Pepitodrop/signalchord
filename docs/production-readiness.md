@@ -57,6 +57,12 @@ Repository-side application-security and tenant-isolation evidence includes expa
 
 Issue #29 still requires external production evidence before closure: independent penetration testing, ingress/WAF and load-balancer body/timeout validation, provider-side Kafka ACL tests, object-storage IAM tenant-prefix denial tests, managed data-store access reviews and formal disposition of any critical or high findings.
 
+## Issue #28 repository progress
+
+Repository-side observability evidence includes documented SLIs/SLOs, Prometheus alert rules with owners and runbooks, Grafana dashboard provisioning, telemetry retention guidance, incident/dependency/data-quality/source-takedown runbooks and CI validation for observability assets.
+
+Issue #28 still requires external staging evidence before closure: dashboard exports or screenshots, sample distributed traces, real alert firing/resolution records, paging/routing configuration, telemetry-retention settings from the deployed provider and at least one completed incident or game-day exercise.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.

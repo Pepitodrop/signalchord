@@ -124,7 +124,7 @@ Evidence:
 
 Evidence:
 
-- SLO/dashboard links:
+- SLO/dashboard links: `docs/observability.md`; Grafana dashboard and Prometheus rules are versioned under `infrastructure/monitoring/`. Staging screenshots/exports still required.
 - Alert test:
 - Game-day report:
 
