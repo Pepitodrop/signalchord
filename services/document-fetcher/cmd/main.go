@@ -83,12 +83,9 @@ func (a *app) handle(ctx context.Context, message *sarama.ConsumerMessage) error
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return fmt.Errorf("unexpected HTTP status %d", response.StatusCode)
 	}
-	body, err := io.ReadAll(io.LimitReader(response.Body, maxDocumentBytes+1))
+	body, err := readLimitedBody(response.Body, maxDocumentBytes)
 	if err != nil {
 		return err
-	}
-	if len(body) > maxDocumentBytes {
-		return errors.New("document exceeds size limit")
 	}
 	digest := sha256.Sum256(body)
 	hash := hex.EncodeToString(digest[:])
@@ -109,8 +106,12 @@ func (a *app) handle(ctx context.Context, message *sarama.ConsumerMessage) error
 }
 
 func safeHTTPClient() *http.Client {
+	return safeHTTPClientWithTimeouts(30*time.Second, 15*time.Second)
+}
+
+func safeHTTPClientWithTimeouts(timeout time.Duration, responseHeaderTimeout time.Duration) *http.Client {
 	dialer := &net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}
-	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConns: 50, IdleConnTimeout: 60 * time.Second, ResponseHeaderTimeout: 15 * time.Second}
+	transport := &http.Transport{Proxy: http.ProxyFromEnvironment, MaxIdleConns: 50, IdleConnTimeout: 60 * time.Second, ResponseHeaderTimeout: responseHeaderTimeout}
 	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)
 		if err != nil {
@@ -127,12 +128,23 @@ func safeHTTPClient() *http.Client {
 		}
 		return nil, errors.New("no permitted resolved address")
 	}
-	return &http.Client{Transport: transport, Timeout: 30 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	return &http.Client{Transport: transport, Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return errors.New("redirect limit exceeded")
 		}
 		return documentfetcher.ValidateFetchURL(req.URL.String())
 	}}
+}
+
+func readLimitedBody(body io.Reader, maxBytes int64) ([]byte, error) {
+	bytes, err := io.ReadAll(io.LimitReader(body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(bytes)) > maxBytes {
+		return nil, errors.New("document exceeds size limit")
+	}
+	return bytes, nil
 }
 
 func safeHeaders(headers http.Header) map[string]string {

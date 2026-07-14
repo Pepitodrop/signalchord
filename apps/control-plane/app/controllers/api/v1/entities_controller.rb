@@ -1,13 +1,16 @@
+require "cgi"
 require "net/http"
 
 module Api
   module V1
     class EntitiesController < ApplicationController
-      def show = proxy("/v1/entities/#{CGI.escape(params[:id])}")
-      def timeline = proxy("/v1/entities/#{CGI.escape(params[:id])}/timeline", request.query_parameters)
-      def graph = proxy("/v1/entities/#{CGI.escape(params[:id])}/graph", request.query_parameters)
+      def show = proxy("/v1/entities/#{CGI.escape(stable_id)}")
+      def timeline = proxy("/v1/entities/#{CGI.escape(stable_id)}/timeline", request.query_parameters)
+      def graph = proxy("/v1/entities/#{CGI.escape(stable_id)}/graph", request.query_parameters)
 
       private
+
+      def stable_id = params[:id] || params[:entity_id]
 
       def proxy(path, query = {})
         base = URI(ENV.fetch("GRAPH_QUERY_URL", "http://graph-query:8090"))

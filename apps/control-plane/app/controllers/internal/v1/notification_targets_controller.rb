@@ -27,7 +27,8 @@ module Internal
       end
 
       def update
-        delivery = NotificationDelivery.find(params[:id])
+        organization = Organization.find(params.require(:tenant_id))
+        delivery = organization.notification_deliveries.find(params[:id])
         delivery.update!(
           status: params.require(:status),
           provider_message_id: params[:provider_message_id],

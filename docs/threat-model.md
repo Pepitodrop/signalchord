@@ -34,6 +34,12 @@ Tenant credentials and configuration, licensed/raw source documents, graph facts
 | Data exfiltration through logs | structured redaction, no raw document body or credentials, tenant-aware log access | log scanning and redaction tests |
 | Destructive administrator action | least privilege, approval for deletion/replay, immutable audit records, backups | restore and privileged-action drills |
 
+## Application-security evidence
+
+Current repository-side application-security evidence is tracked in [application-security.md](application-security.md). It covers Rails API tenant-negative request specs, graph/search projection tenant predicates, realtime bearer-token introspection, fetcher SSRF/redirect/timeout/size tests, Rack Attack abuse limits and security headers.
+
+The remaining production evidence is external: independent penetration testing, ingress/WAF/body-limit validation, cloud identity/IAM denial tests and formal disposition for any critical or high findings.
+
 ## Human review gates
 
 Automatically generated claims involving alleged wrongdoing, identity-sensitive assertions, low-confidence entity resolution or material contradiction require human review before being labeled verified or used for high-severity external notifications.

@@ -51,6 +51,12 @@ Repository-side Kubernetes hardening includes credential-free staging and produc
 
 Issue #25 still requires target-cluster evidence before closure: admission policy results, real ExternalSecret CRDs/controllers, NetworkPolicy connectivity tests, ingress TLS evidence and capacity measurements supporting requests, limits and quotas.
 
+## Issue #29 repository progress
+
+Repository-side application-security and tenant-isolation evidence includes expanded Rails tenant-negative request specs, tenant-scoped internal notification delivery updates, graph-query parameterization tests, search-projector tenant-index tests, realtime authorization tests, document-fetcher SSRF/redirect/timeout/size tests, Rack Attack body/auth/IP limits and API security headers.
+
+Issue #29 still requires external production evidence before closure: independent penetration testing, ingress/WAF and load-balancer body/timeout validation, provider-side Kafka ACL tests, object-storage IAM tenant-prefix denial tests, managed data-store access reviews and formal disposition of any critical or high findings.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.
