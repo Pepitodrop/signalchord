@@ -81,6 +81,12 @@ Repository-side data/source governance evidence now includes `governance/source-
 
 Issue #30 still requires external evidence before closure: actual third-party source contracts and robots/terms review, privacy/security/legal approval, production subprocessor and regional-residency records, provider-retention configuration proof, backup deletion reconciliation, subject-specific rights workflows, and synthetic end-to-end deletion/export evidence from a staging-like environment.
 
+## Issue #31 repository progress
+
+Repository-side model and alert-quality evidence now includes `quality/evaluation-plan.json`, `quality/datasets/synthetic-fixture-v1.json`, `quality/results/repository-baseline.json`, CI validation in `scripts/validate_quality.py`, failure-covering validator tests, and `docs/model-quality.md` covering intended/prohibited use, critical thresholds, human-review rules, coverage gaps, monitoring and rollback criteria.
+
+Issue #31 still requires external evidence before closure: legally usable representative evaluation datasets, annotation QA, release-candidate metrics on the exact model/rule/configuration versions, segmented bias/domain/language analysis, production quality dashboards, and product/legal/business approval of false-positive and false-negative budgets.
+
 ## Issue #32 repository progress
 
 Repository-side product-operations evidence now includes invitation-based tenant onboarding, user session listing and revocation, membership suspension with token revocation, owner/admin membership administration with last-owner protection, tenant-local usage and billing write gates, support-ticket intake/status workflow, notification invalid-token disablement and CI validation for product-readiness evidence in `product/readiness-checklist.json`.

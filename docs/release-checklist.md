@@ -138,7 +138,7 @@ Evidence:
 
 Evidence:
 
-- Model-quality report:
+- Model-quality report: repository-side controls in `docs/model-quality.md`, `quality/evaluation-plan.json`, `quality/datasets/synthetic-fixture-v1.json`, `quality/results/repository-baseline.json`, and `scripts/validate_quality.py`; representative release-candidate report still required.
 - Product readiness controls: `docs/product-operations-readiness.md`; machine-readable repository evidence in `product/readiness-checklist.json`; CI validator in `scripts/validate_product_readiness.py`.
 - Product acceptance report:
 - Production email/mobile/billing evidence:
