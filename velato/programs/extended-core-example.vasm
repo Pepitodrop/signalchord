@@ -1,0 +1,21 @@
+# SignalChord Velato 1.1 assembly example.
+# Score novelty on a 0-100 scale, clamp it, and suppress low-trust items.
+
+LOAD_INPUT novelty
+PUSH_CONST 100
+MUL
+PUSH_CONST 0
+PUSH_CONST 100
+CLAMP
+STORE_SCORE
+
+LOAD_INPUT source_trust
+PUSH_CONST 1
+LT
+STORE_SUPPRESS
+
+PUSH_CONST 3
+STORE_SEVERITY
+PUSH_CONST 1
+STORE_ROUTE
+HALT
