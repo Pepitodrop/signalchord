@@ -4,7 +4,7 @@
 
 SignalChord is an early-stage, multi-tenant intelligence platform that ingests permitted news sources, preserves provenance, extracts entities and claims, projects them into a temporal knowledge graph, evaluates auditable alert policies, and delivers web, mobile and realtime experiences.
 
-> **Project status:** public-alpha quality. The repository contains a tested reference vertical slice and production-oriented deployment scaffolding. It is not yet a production service or a finished commercial product. See [Production readiness](docs/production-readiness.md).
+> **Project status:** verified public-alpha quality. The repository contains a tested reference vertical slice and production-oriented deployment scaffolding. It is not yet an internet-facing production service or a finished commercial product. See [Production readiness](docs/production-readiness.md).
 
 ## What is implemented
 
@@ -22,6 +22,22 @@ The reference article-to-alert flow includes:
 10. Docker Compose integration tests and a consolidated Helm chart for stateless workloads.
 
 The default verified path deliberately avoids requiring a third-party Kafka Connect plugin. Kafka Connect configuration remains available as an optional integration for environments that validate and operate it separately.
+
+## Languages and what they do
+
+| Language or format | Role in SignalChord |
+| --- | --- |
+| **TypeScript / TSX** | Implements the React analyst web application, Expo mobile client, shared API clients and domain types. |
+| **Go** | Runs the high-throughput ingestion path: feed collection, document fetching, stream normalization and the authenticated realtime gateway. |
+| **Python** | Implements NLP extraction, entity resolution, claim intelligence, graph and search projection, graph query and analytics services, alert and notification workers, and the Velato policy engine. |
+| **Ruby** | Powers the Rails control plane for identity, organizations, tenancy, RBAC, sources, watchlists, investigations, alerts, audit records and the transactional outbox. |
+| **Protocol Buffers** | Defines versioned Kafka event contracts and compatibility-safe schemas shared across services. |
+| **Cypher** | Defines Neo4j constraints, idempotent graph mutations, evidence relationships and approved graph queries. |
+| **SQL** | Backs the PostgreSQL control-plane data model through Rails migrations and Active Record. |
+| **Shell** | Automates local startup, dependency initialization, schema setup, smoke tests and operational workflows. |
+| **YAML** | Configures Docker Compose, Kubernetes and Helm, GitHub Actions, observability and service deployment settings. |
+| **HCL / Terraform** | Describes infrastructure provisioning wrappers and environment-level deployment inputs. |
+| **Dockerfile and nginx configuration** | Build reproducible service images and serve the web application through a rootless runtime with same-origin API and realtime proxying. |
 
 ## Quick start
 
@@ -89,7 +105,9 @@ Report vulnerabilities according to [SECURITY.md](SECURITY.md). Data and source 
 
 ## Publication status
 
-The codebase is suitable to publish as an **alpha/open-development repository** once the pull request checks are green. Publication does not mean the hosted system is production-ready. Known operational and product gaps are listed explicitly in [Production readiness](docs/production-readiness.md).
+The codebase is suitable to publish now as an **alpha/open-development repository**. The complete CI, security, image-build and Docker Compose end-to-end checks passed on the reviewed foundation commit before it was merged into `main`.
+
+Making the source public does not mean a hosted SignalChord deployment is production-ready. Before processing real customer data, complete the operational, legal, security and reliability gates documented in [Production readiness](docs/production-readiness.md).
 
 ## License
 
