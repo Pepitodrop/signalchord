@@ -24,6 +24,9 @@ global:
     velatoEngineUrl: https://signalchord-alerting:8091
     webOrigin: https://app.signalchord.example
     otelEndpoint: https://otel-collector.observability.svc:4317
+    apiRateLimit: "600"
+    authRateLimit: "30"
+    apiMaxBodyBytes: "1048576"
 
 serviceAccount:
   create: true
@@ -309,3 +312,7 @@ ingress:
   className: nginx
   host: app.signalchord.example
   tlsSecretName: signalchord-tls
+  proxyBodySize: 1m
+  proxyConnectTimeout: "5"
+  proxySendTimeout: "60"
+  proxyReadTimeout: "3600"

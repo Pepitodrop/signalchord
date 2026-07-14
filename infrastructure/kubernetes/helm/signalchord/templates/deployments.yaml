@@ -76,6 +76,9 @@ spec:
             - {name: WEB_ORIGIN, value: {{ $.Values.global.config.webOrigin | quote }}}
             - {name: WEB_ORIGINS, value: {{ $.Values.global.config.webOrigin | quote }}}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $.Values.global.config.otelEndpoint | quote }}}
+            - {name: API_RATE_LIMIT, value: {{ $.Values.global.config.apiRateLimit | quote }}}
+            - {name: AUTH_RATE_LIMIT, value: {{ $.Values.global.config.authRateLimit | quote }}}
+            - {name: API_MAX_BODY_BYTES, value: {{ $.Values.global.config.apiMaxBodyBytes | quote }}}
           envFrom:
             - secretRef: {name: {{ $.Values.global.existingSecret }}}
           securityContext:

@@ -156,6 +156,8 @@ jobs:
       - run: find scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
       - run: python3 scripts/test_release_manifest.py
       - run: python3 scripts/validate_observability.py
+      - run: python3 scripts/validate_capacity.py
+      - run: python3 scripts/test_validate_capacity.py
       - name: Verify release Dockerfile bases are digest-pinned
         run: |
           python3 - <<'PY'

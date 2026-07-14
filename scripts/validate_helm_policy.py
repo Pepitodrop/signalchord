@@ -46,6 +46,13 @@ def main() -> int:
         "revisionHistoryLimit:",
         "minReadySeconds:",
         "maxUnavailable: 0",
+        "name: API_RATE_LIMIT",
+        "name: AUTH_RATE_LIMIT",
+        "name: API_MAX_BODY_BYTES",
+        "nginx.ingress.kubernetes.io/proxy-body-size: \"1m\"",
+        "nginx.ingress.kubernetes.io/proxy-connect-timeout: \"5\"",
+        "nginx.ingress.kubernetes.io/proxy-send-timeout: \"60\"",
+        "nginx.ingress.kubernetes.io/proxy-read-timeout: \"3600\"",
     ]
     for fragment in required_fragments:
         if fragment not in text:
