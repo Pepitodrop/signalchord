@@ -1,4 +1,4 @@
-FROM confluentinc/cp-kafka-connect:7.7.1
+FROM confluentinc/cp-kafka-connect:7.7.1@sha256:c5872175ca3a6d15456adfb644c68a77050c106ea1e11a4cd7f2417a16e00037
 USER root
 RUN mkdir -p /usr/share/java/neo4j \
  && curl --fail --location --retry 3 \

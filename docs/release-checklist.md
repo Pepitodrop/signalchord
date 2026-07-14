@@ -18,6 +18,7 @@ Evidence:
 - Image digest manifest:
 - SBOM/provenance artifacts:
 - Scan reports:
+- Release procedure: `docs/release-supply-chain.md`
 
 ## 2. Data and source governance
 

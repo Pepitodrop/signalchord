@@ -31,6 +31,11 @@ Split a process into its own deployment only when it requires different hardware
 - Verify Protobuf compatibility before promotion.
 - Promote the same image digest through staging and production.
 
+The release workflow produces `release-manifest.json`, `image-digests.txt`,
+SBOMs, vulnerability reports and Sigstore verification output. See
+[Release supply chain](release-supply-chain.md) for the digest-only promotion
+and verification procedure.
+
 ## Kubernetes/Helm
 
 The chart under `infrastructure/kubernetes/helm/signalchord` deploys stateless application workloads. It expects externally provisioned Kafka/Schema Registry, Neo4j, PostgreSQL, Redis, object storage, OpenSearch and OpenTelemetry endpoints.

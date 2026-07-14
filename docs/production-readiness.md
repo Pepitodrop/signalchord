@@ -51,6 +51,7 @@ A release candidate may be promoted only when:
 
 - required CI checks are green on the exact commit;
 - images are immutable and scanned;
+- `release-manifest.json` and the SBOM, scan and signature-verification artifacts from the release workflow are retained;
 - migrations and synthetic canaries pass in staging;
 - rollback and restore procedures have been exercised;
 - no unresolved critical security or data-governance finding exists;
