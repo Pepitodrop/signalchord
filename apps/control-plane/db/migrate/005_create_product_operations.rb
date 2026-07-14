@@ -20,7 +20,7 @@ class CreateProductOperations < ActiveRecord::Migration[8.0]
     add_index :invitations, %i[organization_id email accepted_at revoked_at], name: "idx_invitations_org_email_state"
 
     create_table :usage_limits, id: :uuid do |t|
-      t.references :organization, type: :uuid, null: false, foreign_key: true
+      t.references :organization, type: :uuid, null: false, foreign_key: true, index: false
       t.string :billing_state, null: false, default: "trialing"
       t.integer :source_limit, null: false, default: 5
       t.integer :watchlist_limit, null: false, default: 10
