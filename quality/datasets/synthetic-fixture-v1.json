@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "dataset_id": "synthetic-fixture-v1",
+  "dataset_type": "repository_synthetic_test",
+  "rights": {
+    "status": "repository_owned",
+    "license": "Apache-2.0-compatible synthetic fixture",
+    "third_party_text": false,
+    "provenance": "Hand-authored synthetic examples for CI and public repository validation."
+  },
+  "train_test_split": {
+    "train_ids": [],
+    "validation_ids": [],
+    "test_ids": ["case-technology-partnership", "case-ambiguous-entity", "case-sensitive-allegation", "case-low-value-alert"]
+  },
+  "coverage": {
+    "languages": ["en"],
+    "source_types": ["synthetic_press_release", "synthetic_wire", "synthetic_blog"],
+    "domains": ["technology", "regulatory", "supply_chain"],
+    "risk_levels": ["low", "medium", "high"]
+  },
+  "annotation_guidance": {
+    "entity": "Annotate only explicit organization, person, product, and location mentions with evidence offsets.",
+    "claim": "Treat extracted claims as source-attributed statements, not verified platform facts.",
+    "alert": "Mark alert relevant only if it would require analyst review for the configured watchlist."
+  },
+  "cases": [
+    {
+      "id": "case-technology-partnership",
+      "split": "test",
+      "language": "en",
+      "risk_level": "low",
+      "source_type": "synthetic_press_release",
+      "expected": {"entities": 2, "claims": 1, "requires_human_review": false, "relevant_alert": true}
+    },
+    {
+      "id": "case-ambiguous-entity",
+      "split": "test",
+      "language": "en",
+      "risk_level": "medium",
+      "source_type": "synthetic_wire",
+      "expected": {"entities": 2, "claims": 1, "requires_human_review": true, "relevant_alert": true}
+    },
+    {
+      "id": "case-sensitive-allegation",
+      "split": "test",
+      "language": "en",
+      "risk_level": "high",
+      "source_type": "synthetic_wire",
+      "expected": {"entities": 3, "claims": 2, "requires_human_review": true, "relevant_alert": true}
+    },
+    {
+      "id": "case-low-value-alert",
+      "split": "test",
+      "language": "en",
+      "risk_level": "low",
+      "source_type": "synthetic_blog",
+      "expected": {"entities": 1, "claims": 0, "requires_human_review": false, "relevant_alert": false}
+    }
+  ]
+}
