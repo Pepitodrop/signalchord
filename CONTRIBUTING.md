@@ -5,9 +5,7 @@ Create focused branches and pull requests. Architectural, event-schema, graph-sc
 ## Required checks
 
 ```bash
-# Alpha bootstrap: this currently generates pnpm-lock.yaml. Do not claim a
-# reproducible JavaScript release until the generated lockfile is reviewed and committed.
-pnpm install --frozen-lockfile=false
+pnpm install --frozen-lockfile
 pnpm typecheck && pnpm test && pnpm build
 (cd services && go test -race ./...)
 pytest -q services/nlp-pipeline services/entity-resolution services/claim-intelligence \
@@ -32,4 +30,4 @@ Use repeatable migrations and parameterized queries. Document stable-ID, tenant,
 
 ## Definition of done
 
-Acceptance criteria pass; CI is green on the exact commit; tests cover failure and replay; telemetry exists; security and governance impact is reviewed; dependency lockfiles and documentation are current. Production release work must replace the alpha bootstrap with a committed JavaScript lockfile and frozen installs.
+Acceptance criteria pass; CI is green on the exact commit; tests cover failure and replay; telemetry exists; security and governance impact is reviewed; dependency lockfiles and documentation are current. Production release work must use frozen installs, immutable image references, reviewed migrations, staging canaries, and documented rollback and restore evidence.

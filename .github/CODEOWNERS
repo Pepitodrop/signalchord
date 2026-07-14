@@ -1,0 +1,23 @@
+# Default owner
+* @Pepitodrop
+
+# Security, deployment, and release controls
+/.github/ @Pepitodrop
+/infrastructure/ @Pepitodrop
+/docker-compose*.yml @Pepitodrop
+/.env.example @Pepitodrop
+/SECURITY.md @Pepitodrop
+/docs/production-readiness.md @Pepitodrop
+/docs/deployment.md @Pepitodrop
+
+# Contracts and persistence
+/packages/event-schemas/ @Pepitodrop
+/graph/ @Pepitodrop
+/apps/control-plane/db/ @Pepitodrop
+
+# Policy and intelligence execution
+/services/velato-engine/ @Pepitodrop
+/services/document-fetcher/ @Pepitodrop
+/services/nlp-pipeline/ @Pepitodrop
+/services/entity-resolution/ @Pepitodrop
+/services/claim-intelligence/ @Pepitodrop
