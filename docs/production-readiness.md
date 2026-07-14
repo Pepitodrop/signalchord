@@ -6,6 +6,12 @@ SignalChord is suitable for source publication and controlled development/stagin
 
 The readiness decision must be based on evidence, not repository completeness. A green CI run proves the checked code and synthetic vertical slice; it does not prove capacity, availability, legal source rights or operational maturity.
 
+## Execution and release evidence
+
+- Track all remaining work in [GitHub issue #33](https://github.com/Pepitodrop/signalchord/issues/33).
+- Use the [production release checklist](release-checklist.md) for the exact release candidate.
+- Do not mark the project production-ready merely because individual implementation issues or CI jobs are complete. Operational drills, legal/privacy approvals, representative quality evidence, and named risk acceptance are required.
+
 ## Verified in CI
 
 - TypeScript typecheck, tests and production builds.
