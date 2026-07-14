@@ -10,9 +10,13 @@ from fastapi import FastAPI, HTTPException
 from neo4j import Driver, GraphDatabase
 from pydantic import BaseModel, Field
 
+from python_common.production_config import validate_production_config
+
 NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "signalchord-dev")
+
+validate_production_config(["neo4j"])
 
 
 class AnalysisRequest(BaseModel):

@@ -3,10 +3,7 @@ module Outbox
     BATCH_SIZE = 100
 
     def initialize(kafka: nil)
-      @kafka = kafka || Kafka.new(
-        seed_brokers: ENV.fetch("KAFKA_BROKERS", "localhost:29092").split(","),
-        client_id: "signalchord-control-plane"
-      )
+      @kafka = kafka || Kafka.new(**ProductionConfig.kafka_options)
     end
 
     def publish_batch

@@ -21,7 +21,7 @@ spec:
             app.kubernetes.io/part-of: signalchord
         spec:
           restartPolicy: OnFailure
-          serviceAccountName: {{ include "signalchord.serviceAccountName" . }}
+          serviceAccountName: {{ include "signalchord.workloadServiceAccountName" (dict "root" . "name" "feed-collector") }}
           automountServiceAccountToken: false
           securityContext:
             runAsNonRoot: true
@@ -33,6 +33,8 @@ spec:
               env:
                 - {name: SIGNALCHORD_ENV, value: {{ .Values.global.environment | quote }}}
                 - {name: KAFKA_BROKERS, value: {{ .Values.global.config.kafkaBrokers | quote }}}
+                - {name: KAFKA_TLS_ENABLED, value: {{ .Values.global.config.kafkaTlsEnabled | quote }}}
+                - {name: KAFKA_SASL_ENABLED, value: {{ .Values.global.config.kafkaSaslEnabled | quote }}}
                 - {name: CONTROL_PLANE_URL, value: {{ .Values.global.config.controlPlaneUrl | quote }}}
                 - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ .Values.global.config.otelEndpoint | quote }}}
               envFrom:

@@ -7,6 +7,8 @@ import signal
 import httpx
 from confluent_kafka import Consumer
 
+from python_common.production_config import kafka_config, validate_production_config
+
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 CONTROL_PLANE_URL = os.getenv("CONTROL_PLANE_URL", "http://control-plane:3000")
 INTERNAL_TOKEN = os.getenv("CONTROL_PLANE_INTERNAL_TOKEN", "signalchord-local-internal")
@@ -22,6 +24,7 @@ def project(client: httpx.Client, event: dict) -> None:
 
 
 def main() -> None:
+    validate_production_config(["kafka", "control_plane", "internal_token"])
     running = True
 
     def stop(*_: object) -> None:
@@ -31,12 +34,13 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-alert-projector-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-alert-projector-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
     client = httpx.Client(timeout=10)
     consumer.subscribe(["alert.created.v1"])

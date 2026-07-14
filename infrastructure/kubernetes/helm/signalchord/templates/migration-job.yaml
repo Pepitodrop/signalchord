@@ -19,6 +19,7 @@ spec:
         app.kubernetes.io/part-of: signalchord
     spec:
       restartPolicy: Never
+      serviceAccountName: {{ include "signalchord.workloadServiceAccountName" (dict "root" . "name" "migration") }}
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -31,6 +32,12 @@ spec:
           env:
             - {name: RAILS_ENV, value: production}
             - {name: SIGNALCHORD_ENV, value: {{ .Values.global.environment | quote }}}
+            - {name: KAFKA_BROKERS, value: {{ .Values.global.config.kafkaBrokers | quote }}}
+            - {name: KAFKA_TLS_ENABLED, value: {{ .Values.global.config.kafkaTlsEnabled | quote }}}
+            - {name: KAFKA_SASL_ENABLED, value: {{ .Values.global.config.kafkaSaslEnabled | quote }}}
+            - {name: REDIS_URL, value: {{ .Values.global.config.redisUrl | quote }}}
+            - {name: OPENSEARCH_URL, value: {{ .Values.global.config.opensearchUrl | quote }}}
+            - {name: WEB_ORIGINS, value: {{ .Values.global.config.webOrigin | quote }}}
             - {name: DISABLE_BOOTSNAP, value: "true"}
             - {name: TMPDIR, value: /tmp}
           envFrom:

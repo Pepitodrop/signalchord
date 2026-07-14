@@ -11,8 +11,10 @@ import (
 type Producer struct{ p sarama.SyncProducer }
 
 func NewProducer(brokers []string) (*Producer, error) {
-	cfg := sarama.NewConfig()
-	cfg.Version = sarama.V3_7_0_0
+	cfg, err := NewConfig()
+	if err != nil {
+		return nil, err
+	}
 	cfg.Producer.RequiredAcks = sarama.WaitForAll
 	cfg.Producer.Return.Successes = true
 	cfg.Producer.Idempotent = true

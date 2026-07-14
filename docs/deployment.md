@@ -49,7 +49,7 @@ helm upgrade --install signalchord infrastructure/kubernetes/helm/signalchord \
 
 Required production values include:
 
-- an existing runtime secret;
+- an External Secrets Operator/CSI runtime secret source for `signalchord-runtime`;
 - real service endpoints;
 - an immutable image tag;
 - environment-specific NetworkPolicy namespaces/CIDRs;
@@ -57,6 +57,8 @@ Required production values include:
 - measured per-container resources.
 
 The migration Job runs as a pre-install/pre-upgrade Helm hook. Review migrations before every release and use a dedicated least-privilege database identity.
+
+See [Secrets, identities, and encrypted transport](secrets-and-transport.md) for required secret-store mappings, per-workload service accounts, Kafka ACL expectations, transport requirements and rotation evidence. Do not deploy production with local Compose credentials, plaintext service URLs or a manually created Kubernetes Secret that bypasses the managed secret store.
 
 ## Autoscaling
 

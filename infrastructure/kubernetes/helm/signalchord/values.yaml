@@ -8,22 +8,49 @@ global:
   terminationGracePeriodSeconds: 30
   config:
     kafkaBrokers: kafka-bootstrap.kafka.svc:9093
+    kafkaTlsEnabled: "true"
+    kafkaSaslEnabled: "true"
     schemaRegistryUrl: https://schema-registry.kafka.svc
     minioEndpoint: object-storage.storage.svc:9000
     minioBucket: raw-documents
-    redisUrl: redis://redis.cache.svc:6379/0
+    minioSecure: "true"
+    redisUrl: rediss://redis.cache.svc:6379/0
     opensearchUrl: https://opensearch.search.svc:9200
-    neo4jUri: neo4j://neo4j.graph.svc:7687
-    controlPlaneUrl: http://signalchord-control-plane:3000
-    graphQueryUrl: http://signalchord-graph-query:8090
-    graphAnalyticsUrl: http://signalchord-graph-analytics:8092
-    velatoEngineUrl: http://signalchord-alerting:8091
+    opensearchVerifyCerts: "true"
+    neo4jUri: neo4j+s://neo4j.graph.svc:7687
+    controlPlaneUrl: https://signalchord-control-plane:3000
+    graphQueryUrl: https://signalchord-graph-query:8090
+    graphAnalyticsUrl: https://signalchord-graph-analytics:8092
+    velatoEngineUrl: https://signalchord-alerting:8091
     webOrigin: https://app.signalchord.example
-    otelEndpoint: http://otel-collector.observability.svc:4317
+    otelEndpoint: https://otel-collector.observability.svc:4317
 
 serviceAccount:
   create: true
   name: signalchord
+  workloadAnnotations: {}
+
+externalSecret:
+  enabled: true
+  name: signalchord-runtime
+  refreshInterval: 1h
+  secretStoreRef:
+    kind: ClusterSecretStore
+    name: signalchord-production
+  data:
+    - {secretKey: DATABASE_URL, remoteRef: {key: signalchord/control-plane/database-url}}
+    - {secretKey: SECRET_KEY_BASE, remoteRef: {key: signalchord/control-plane/secret-key-base}}
+    - {secretKey: CONTROL_PLANE_INTERNAL_TOKEN, remoteRef: {key: signalchord/control-plane/internal-token}}
+    - {secretKey: NOTIFICATION_TOKEN_ENCRYPTION_KEY, remoteRef: {key: signalchord/control-plane/notification-token-encryption-key}}
+    - {secretKey: KAFKA_SASL_USER, remoteRef: {key: signalchord/kafka/sasl-user}}
+    - {secretKey: KAFKA_SASL_PASSWORD, remoteRef: {key: signalchord/kafka/sasl-password}}
+    - {secretKey: KAFKA_TLS_CA_PEM, remoteRef: {key: signalchord/kafka/ca-pem}}
+    - {secretKey: MINIO_ACCESS_KEY, remoteRef: {key: signalchord/object-storage/access-key}}
+    - {secretKey: MINIO_SECRET_KEY, remoteRef: {key: signalchord/object-storage/secret-key}}
+    - {secretKey: NEO4J_USER, remoteRef: {key: signalchord/neo4j/user}}
+    - {secretKey: NEO4J_PASSWORD, remoteRef: {key: signalchord/neo4j/password}}
+    - {secretKey: OPENSEARCH_USERNAME, remoteRef: {key: signalchord/opensearch/username}}
+    - {secretKey: OPENSEARCH_PASSWORD, remoteRef: {key: signalchord/opensearch/password}}
 
 podDisruptionBudget:
   enabled: true
@@ -252,7 +279,7 @@ networkPolicy:
     - {name: kafka, ports: [9093, 443]}
     - {name: database, ports: [5432]}
     - {name: graph, ports: [7687, 443]}
-    - {name: cache, ports: [6379]}
+    - {name: cache, ports: [6379, 6380]}
     - {name: storage, ports: [9000, 443]}
     - {name: search, ports: [9200, 443]}
     - {name: observability, ports: [4317, 4318]}

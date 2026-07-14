@@ -12,6 +12,7 @@ from botocore.config import Config
 from confluent_kafka import Consumer, Producer
 
 from app import Document, extract
+from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 INPUT_TOPIC = "document.nlp-requested.v1"
@@ -165,6 +166,7 @@ def graph_base_mutations(source: dict, payload: dict, result) -> list[tuple[str,
 
 
 def main() -> None:
+    validate_production_config(["kafka", "minio"])
     running = True
 
     def stop(*_: object) -> None:
@@ -174,14 +176,15 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-nlp-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-nlp-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
-    producer = Producer({"bootstrap.servers": BROKERS, "enable.idempotence": True, "acks": "all"})
+    producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
     storage = object_client()
     consumer.subscribe([INPUT_TOPIC])
     try:

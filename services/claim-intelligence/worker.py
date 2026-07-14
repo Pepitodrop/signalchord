@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from confluent_kafka import Consumer, Producer
 
 from engine import cluster_claim
+from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 
@@ -105,6 +106,7 @@ def graph_mutations(source: dict, payload: dict, cluster_id: str, normalized: st
 
 
 def main() -> None:
+    validate_production_config(["kafka"])
     running = True
 
     def stop(*_: object) -> None:
@@ -114,14 +116,15 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-claim-intelligence-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-claim-intelligence-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
-    producer = Producer({"bootstrap.servers": BROKERS, "enable.idempotence": True, "acks": "all"})
+    producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
     consumer.subscribe(["claim.extracted.v1"])
     try:
         while running:

@@ -10,6 +10,8 @@ from botocore.config import Config
 from confluent_kafka import Consumer
 from opensearchpy import OpenSearch
 
+from python_common.production_config import kafka_config, validate_production_config
+
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 MAX_TEXT_BYTES = 5_000_000
 
@@ -29,8 +31,11 @@ def storage_client():
 
 def search_client() -> OpenSearch:
     parsed = urlparse(os.getenv("OPENSEARCH_URL", "http://localhost:9200"))
+    username = os.getenv("OPENSEARCH_USERNAME")
+    password = os.getenv("OPENSEARCH_PASSWORD")
     return OpenSearch(
         hosts=[{"host": parsed.hostname or "localhost", "port": parsed.port or 9200, "scheme": parsed.scheme}],
+        http_auth=(username, password) if username and password else None,
         use_ssl=parsed.scheme == "https",
         verify_certs=os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() == "true",
     )
@@ -135,6 +140,7 @@ def project(client: OpenSearch, storage, event: dict) -> None:
 
 
 def main() -> None:
+    validate_production_config(["kafka", "minio", "opensearch"])
     running = True
 
     def stop(*_: object) -> None:
@@ -144,12 +150,13 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-search-projector-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-search-projector-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
     client = search_client()
     storage = storage_client()

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/Pepitodrop/signalchord/services/internal/configcheck"
 	"github.com/Pepitodrop/signalchord/services/internal/events"
 	"github.com/Pepitodrop/signalchord/services/internal/kafkautil"
 )
@@ -84,6 +85,10 @@ func main() {
 	ctx, cancel := context.WithCancel(signalCtx)
 	defer cancel()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if err := configcheck.RequireProduction(configcheck.CurrentEnv(), configcheck.Kafka(), configcheck.HTTPSURL("CONTROL_PLANE_URL"), configcheck.HTTPSURL("WEB_ORIGIN"), configcheck.InternalToken()); err != nil {
+		logger.Error("validate production config", "error", err)
+		os.Exit(1)
+	}
 	stream := newBroker()
 	brokers := strings.Split(env("KAFKA_BROKERS", "localhost:29092"), ",")
 

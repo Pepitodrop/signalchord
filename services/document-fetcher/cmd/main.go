@@ -21,6 +21,7 @@ import (
 
 	"github.com/IBM/sarama"
 	documentfetcher "github.com/Pepitodrop/signalchord/services/document-fetcher"
+	"github.com/Pepitodrop/signalchord/services/internal/configcheck"
 	"github.com/Pepitodrop/signalchord/services/internal/events"
 	"github.com/Pepitodrop/signalchord/services/internal/kafkautil"
 	"github.com/minio/minio-go/v7"
@@ -41,6 +42,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	fatal(logger, "validate production config", configcheck.RequireProduction(configcheck.CurrentEnv(), configcheck.Kafka(), configcheck.MinIO()))
 	brokers := strings.Split(env("KAFKA_BROKERS", "localhost:29092"), ",")
 	producer, err := kafkautil.NewProducer(brokers)
 	fatal(logger, "create producer", err)

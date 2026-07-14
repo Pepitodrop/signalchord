@@ -20,7 +20,7 @@ spec:
         app.kubernetes.io/name: {{ $name }}
         app.kubernetes.io/part-of: signalchord
     spec:
-      serviceAccountName: {{ include "signalchord.serviceAccountName" $ }}
+      serviceAccountName: {{ include "signalchord.workloadServiceAccountName" (dict "root" $ "name" $name) }}
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: {{ $.Values.global.terminationGracePeriodSeconds }}
       securityContext:
@@ -50,17 +50,22 @@ spec:
           env:
             - {name: SIGNALCHORD_ENV, value: {{ $.Values.global.environment | quote }}}
             - {name: KAFKA_BROKERS, value: {{ $.Values.global.config.kafkaBrokers | quote }}}
+            - {name: KAFKA_TLS_ENABLED, value: {{ $.Values.global.config.kafkaTlsEnabled | quote }}}
+            - {name: KAFKA_SASL_ENABLED, value: {{ $.Values.global.config.kafkaSaslEnabled | quote }}}
             - {name: SCHEMA_REGISTRY_URL, value: {{ $.Values.global.config.schemaRegistryUrl | quote }}}
             - {name: MINIO_ENDPOINT, value: {{ $.Values.global.config.minioEndpoint | quote }}}
             - {name: MINIO_BUCKET, value: {{ $.Values.global.config.minioBucket | quote }}}
+            - {name: MINIO_SECURE, value: {{ $.Values.global.config.minioSecure | quote }}}
             - {name: REDIS_URL, value: {{ $.Values.global.config.redisUrl | quote }}}
             - {name: OPENSEARCH_URL, value: {{ $.Values.global.config.opensearchUrl | quote }}}
+            - {name: OPENSEARCH_VERIFY_CERTS, value: {{ $.Values.global.config.opensearchVerifyCerts | quote }}}
             - {name: NEO4J_URI, value: {{ $.Values.global.config.neo4jUri | quote }}}
             - {name: CONTROL_PLANE_URL, value: {{ $.Values.global.config.controlPlaneUrl | quote }}}
             - {name: GRAPH_QUERY_URL, value: {{ $.Values.global.config.graphQueryUrl | quote }}}
             - {name: GRAPH_ANALYTICS_URL, value: {{ $.Values.global.config.graphAnalyticsUrl | quote }}}
             - {name: VELATO_ENGINE_URL, value: {{ $.Values.global.config.velatoEngineUrl | quote }}}
             - {name: WEB_ORIGIN, value: {{ $.Values.global.config.webOrigin | quote }}}
+            - {name: WEB_ORIGINS, value: {{ $.Values.global.config.webOrigin | quote }}}
             - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: {{ $.Values.global.config.otelEndpoint | quote }}}
           envFrom:
             - secretRef: {name: {{ $.Values.global.existingSecret }}}

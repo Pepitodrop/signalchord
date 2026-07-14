@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/IBM/sarama"
+	"github.com/Pepitodrop/signalchord/services/internal/configcheck"
 	"github.com/Pepitodrop/signalchord/services/internal/events"
 	"github.com/Pepitodrop/signalchord/services/internal/kafkautil"
 	streamnormalizer "github.com/Pepitodrop/signalchord/services/stream-normalizer"
@@ -39,6 +40,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	fatal(logger, "validate production config", configcheck.RequireProduction(configcheck.CurrentEnv(), configcheck.Kafka(), configcheck.MinIO(), configcheck.Redis()))
 	brokers := strings.Split(env("KAFKA_BROKERS", "localhost:29092"), ",")
 	producer, err := kafkautil.NewProducer(brokers)
 	fatal(logger, "create producer", err)

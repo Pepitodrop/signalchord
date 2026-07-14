@@ -1,4 +1,5 @@
 require "net/http"
+require "openssl"
 
 module Api
   module V1
@@ -21,6 +22,9 @@ module Api
         uri = base + "/#{index}/_search"
         request = Net::HTTP::Post.new(uri)
         request["Content-Type"] = "application/json"
+        if ENV["OPENSEARCH_USERNAME"].present? && ENV["OPENSEARCH_PASSWORD"].present?
+          request.basic_auth(ENV["OPENSEARCH_USERNAME"], ENV["OPENSEARCH_PASSWORD"])
+        end
         request.body = JSON.generate(
           size: limit,
           query: {
@@ -30,7 +34,10 @@ module Api
             }
           }
         )
-        response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", read_timeout: 5) { |http| http.request(request) }
+        response = Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == "https", read_timeout: 5) do |http|
+          http.verify_mode = OpenSSL::SSL::VERIFY_PEER if uri.scheme == "https"
+          http.request(request)
+        end
         return [] unless response.is_a?(Net::HTTPSuccess)
 
         JSON.parse(response.body).dig("hits", "hits").to_a.map do |hit|

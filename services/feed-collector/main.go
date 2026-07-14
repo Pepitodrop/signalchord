@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Pepitodrop/signalchord/services/internal/configcheck"
 	"github.com/Pepitodrop/signalchord/services/internal/events"
 	"github.com/Pepitodrop/signalchord/services/internal/kafkautil"
 	"github.com/google/uuid"
@@ -21,6 +22,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if err := configcheck.RequireProduction(configcheck.CurrentEnv(), configcheck.Kafka(), configcheck.HTTPSURL("CONTROL_PLANE_URL")); err != nil {
+		logger.Error("validate production config", "error", err)
+		os.Exit(1)
+	}
 	brokers := strings.Split(env("KAFKA_BROKERS", "localhost:29092"), ",")
 	producer, err := kafkautil.NewProducer(brokers)
 	if err != nil {

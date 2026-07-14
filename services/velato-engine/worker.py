@@ -12,6 +12,8 @@ from pathlib import Path
 
 from confluent_kafka import Consumer, Producer
 
+from python_common.production_config import kafka_config, validate_production_config
+
 spec = importlib.util.spec_from_file_location(
     "velato_engine", Path(__file__).with_name("engine.py")
 )
@@ -40,6 +42,7 @@ def load_default_policy() -> tuple[list, str, str | None]:
 
 
 def main() -> None:
+    validate_production_config(["kafka"])
     running = True
 
     def stop(*_: object) -> None:
@@ -49,16 +52,15 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-velato-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-velato-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
-    producer = Producer(
-        {"bootstrap.servers": BROKERS, "enable.idempotence": True, "acks": "all"}
-    )
+    producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
     policy_ir, execution_engine, policy_source_hash = load_default_policy()
     policy_ir_hash = engine.ir_sha256(policy_ir)
     policy_analysis = engine.analyze_ir(policy_ir).model_dump()

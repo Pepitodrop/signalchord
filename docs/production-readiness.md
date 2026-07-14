@@ -39,6 +39,12 @@ The following are required before production approval:
 9. **Model quality:** representative evaluation datasets, precision/recall targets, bias/error analysis and human-review thresholds.
 10. **Product readiness:** completed authentication flows, customer onboarding, support process, billing controls and mobile signing/push credentials where applicable.
 
+## Issue #24 repository progress
+
+Repository-side controls for managed secrets and encrypted transport now include Helm `ExternalSecret` scaffolding, distinct Kubernetes service accounts per workload, Go/Python/Rails production-mode validators, Kafka TLS/SASL client configuration for Go/Python/Rails publishers, and OpenSearch certificate verification plus basic-auth support.
+
+Issue #24 still requires external staging evidence before closure: real secret-store bindings, workload identity permission review, Kafka ACL allow/deny tests, certificate verification tests against managed dependencies, credential rotation, and provider audit logs.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.
