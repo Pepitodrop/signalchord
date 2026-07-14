@@ -81,6 +81,12 @@ Repository-side data/source governance evidence now includes `governance/source-
 
 Issue #30 still requires external evidence before closure: actual third-party source contracts and robots/terms review, privacy/security/legal approval, production subprocessor and regional-residency records, provider-retention configuration proof, backup deletion reconciliation, subject-specific rights workflows, and synthetic end-to-end deletion/export evidence from a staging-like environment.
 
+## Issue #31 repository progress
+
+Repository-side model and alert-quality evidence now includes `quality/evaluation-plan.json`, `quality/datasets/synthetic-fixture-v1.json`, `quality/results/repository-baseline.json`, CI validation in `scripts/validate_quality.py`, failure-covering validator tests, and `docs/model-quality.md` covering intended/prohibited use, critical thresholds, human-review rules, coverage gaps, monitoring and rollback criteria.
+
+Issue #31 still requires external evidence before closure: legally usable representative evaluation datasets, annotation QA, release-candidate metrics on the exact model/rule/configuration versions, segmented bias/domain/language analysis, production quality dashboards, and product/legal/business approval of false-positive and false-negative budgets.
+
 ## Kubernetes position
 
 The Helm chart deploys stateless application workloads in consolidated initial units. It intentionally does not deploy production Kafka, PostgreSQL, Neo4j, Redis, object storage or OpenSearch.

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "result_id": "repository-baseline-2026-07-14",
+  "dataset_id": "synthetic-fixture-v1",
+  "commit_sha": "repository-fixture",
+  "model_and_rule_versions": {
+    "nlp_pipeline": "signalchord-rules",
+    "entity_resolution": "deterministic-alias-resolver",
+    "claim_intelligence": "deterministic-fixture-engine",
+    "alert_policy": "default-watchlist-novelty-v1"
+  },
+  "metrics": {
+    "extraction": {"precision": 0.92, "recall": 0.78, "evidence_span_accuracy": 0.94},
+    "entity_resolution": {"precision": 0.96, "recall": 0.82, "review_routing_recall": 1.0},
+    "claim_linking": {"precision": 0.89, "recall": 0.72, "contradiction_precision": 0.86},
+    "alert_quality": {"precision_at_review": 0.82, "suppression_precision": 0.91, "routing_accuracy": 0.92}
+  },
+  "coverage": {
+    "languages": {"en": 4},
+    "risk_levels": {"low": 2, "medium": 1, "high": 1},
+    "source_types": {"synthetic_press_release": 1, "synthetic_wire": 2, "synthetic_blog": 1}
+  },
+  "error_analysis": [
+    "Synthetic fixture is too small for production approval.",
+    "No multilingual, regional, or real licensed-source evaluation is represented.",
+    "Metrics are repository control evidence only and must not be used as release-candidate approval."
+  ],
+  "approval": {
+    "status": "repository_control_only",
+    "approved_for_production": false,
+    "required_external_evidence": [
+      "representative licensed test set",
+      "annotation QA report",
+      "release-candidate run with exact model/config identifiers",
+      "product/legal risk acceptance"
+    ]
+  }
+}
