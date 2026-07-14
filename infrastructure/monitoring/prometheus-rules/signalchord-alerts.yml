@@ -1,0 +1,63 @@
+groups:
+  - name: signalchord-slo
+    rules:
+      - alert: SignalChordApiAvailabilityBurn
+        expr: sum(rate(http_server_duration_count{http_response_status_code=~"5.."}[5m])) / clamp_min(sum(rate(http_server_duration_count[5m])), 1) > 0.01
+        for: 10m
+        labels:
+          severity: page
+          owner: operations
+          slo: control-plane-api-availability
+        annotations:
+          summary: Control-plane API 5xx rate is burning the availability budget.
+          runbook_url: docs/runbooks/incident-response.md
+      - alert: SignalChordPipelineFreshnessLag
+        expr: max(signalchord_pipeline_stage_age_seconds{stage=~"fetch|normalize|nlp|graph|alert"}) > 300
+        for: 15m
+        labels:
+          severity: page
+          owner: ingestion
+          slo: article-to-alert-freshness
+        annotations:
+          summary: Article-to-alert freshness exceeds the five-minute internal target.
+          runbook_url: docs/runbooks/data-quality.md
+      - alert: SignalChordKafkaConsumerLagGrowing
+        expr: max(signalchord_kafka_consumer_lag{consumer_group=~"signalchord-.+"}) > 10000
+        for: 15m
+        labels:
+          severity: ticket
+          owner: platform
+          slo: pipeline-backlog
+        annotations:
+          summary: Kafka consumer lag exceeds the initial operational threshold.
+          runbook_url: docs/runbooks/dependency-outage.md
+      - alert: SignalChordNotificationDeliveryFailures
+        expr: sum(rate(signalchord_notification_delivery_total{status="failed"}[15m])) / clamp_min(sum(rate(signalchord_notification_delivery_total[15m])), 1) > 0.05
+        for: 15m
+        labels:
+          severity: ticket
+          owner: customer-operations
+          slo: alert-delivery
+        annotations:
+          summary: Notification delivery failure ratio exceeds the initial threshold.
+          runbook_url: docs/runbooks/incident-response.md
+      - alert: SignalChordTelemetryCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 5m
+        labels:
+          severity: page
+          owner: platform
+          slo: telemetry-availability
+        annotations:
+          summary: OpenTelemetry collector metrics endpoint is unavailable.
+          runbook_url: docs/runbooks/dependency-outage.md
+      - alert: SignalChordCrossTenantViolation
+        expr: increase(signalchord_tenant_isolation_violation_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: page
+          owner: security
+          slo: tenant-isolation
+        annotations:
+          summary: A tenant isolation violation counter incremented.
+          runbook_url: docs/runbooks/incident-response.md

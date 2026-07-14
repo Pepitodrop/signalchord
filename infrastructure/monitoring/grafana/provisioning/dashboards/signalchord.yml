@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: SignalChord
+    orgId: 1
+    folder: SignalChord
+    type: file
+    disableDeletion: false
+    editable: false
+    options:
+      path: /etc/grafana/provisioning/dashboards

@@ -1,0 +1,84 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "targets": [
+        {
+          "expr": "1 - (sum(rate(http_server_duration_count{http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(http_server_duration_count[5m])), 1))",
+          "legendFormat": "API availability"
+        }
+      ],
+      "title": "Control-Plane API Availability",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "targets": [
+        {"expr": "max by (stage) (signalchord_pipeline_stage_age_seconds)", "legendFormat": "{{stage}}"}
+      ],
+      "title": "Pipeline Freshness Age",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "targets": [
+        {"expr": "max by (consumer_group, topic) (signalchord_kafka_consumer_lag)", "legendFormat": "{{consumer_group}} / {{topic}}"}
+      ],
+      "title": "Kafka Consumer Lag",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "id": 4,
+      "targets": [
+        {"expr": "sum by (status) (rate(signalchord_notification_delivery_total[5m]))", "legendFormat": "{{status}}"}
+      ],
+      "title": "Notification Delivery",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "id": 5,
+      "targets": [
+        {"expr": "sum by (service_name) (rate(otelcol_exporter_send_failed_spans[5m]))", "legendFormat": "{{service_name}}"}
+      ],
+      "title": "Telemetry Export Failures",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "id": 6,
+      "targets": [
+        {"expr": "sum by (event_type) (rate(signalchord_event_processing_errors_total[5m]))", "legendFormat": "{{event_type}}"}
+      ],
+      "title": "Event Processing Errors",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["signalchord", "production-readiness"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "utc",
+  "title": "SignalChord Production Overview",
+  "uid": "signalchord-production-overview",
+  "version": 1
+}
