@@ -100,6 +100,15 @@ RSpec.describe "product operations readiness", type: :request do
     expect(owner_membership.reload.disabled_at).to be_nil
   end
 
+  it "prevents disabling the last enabled owner through membership update" do
+    patch "/api/v1/memberships/#{owner_membership.id}",
+          params: { membership: { disabled: true } },
+          headers: owner_headers
+
+    expect(response).to have_http_status(:forbidden)
+    expect(owner_membership.reload.disabled_at).to be_nil
+  end
+
   it "enforces tenant-local quota and billing write gates" do
     organization.sources.create!(
       name: "Alpha feed",

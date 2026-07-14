@@ -10,7 +10,11 @@ module Api
 
       def update
         attrs = membership_params
-        prevent_last_owner_loss! if attrs[:role].present? && @membership.role == "owner" && attrs[:role] != "owner"
+        prevents_enabled_owner = @membership.role == "owner" && (
+          (attrs[:role].present? && attrs[:role] != "owner") ||
+          (attrs.key?(:disabled_at) && attrs[:disabled_at].present?)
+        )
+        prevent_last_owner_loss! if prevents_enabled_owner
         @membership.update!(attrs)
         audit!(action: "membership.updated", target: @membership, metadata: attrs)
         render json: serialize(@membership)
