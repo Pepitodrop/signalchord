@@ -11,6 +11,21 @@ func TestRejectLocalhost(t *testing.T) {
 	}
 }
 
+func TestRejectUnsupportedSchemesAndUserinfo(t *testing.T) {
+	cases := []string{
+		"file:///etc/passwd",
+		"gopher://example.com",
+		"https://user:password@example.com/feed",
+	}
+	for _, raw := range cases {
+		t.Run(raw, func(t *testing.T) {
+			if ValidateFetchURL(raw) == nil {
+				t.Fatal("expected rejection")
+			}
+		})
+	}
+}
+
 func TestPrivateAllowlistIsExact(t *testing.T) {
 	t.Setenv("FETCH_PRIVATE_HOST_ALLOWLIST", "sample-source")
 	if !PrivateHostAllowed("sample-source") {

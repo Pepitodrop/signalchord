@@ -42,12 +42,14 @@ Evidence:
 - [ ] PostgreSQL, Neo4j, Redis, OpenSearch, object storage, telemetry, APIs, and realtime connections use authenticated encrypted transport.
 - [ ] Certificate and credential rotation was exercised.
 - [ ] Authentication, account recovery, session invalidation, RBAC, and tenant isolation tests pass.
+- [ ] Independent penetration test for public API, internal API, ingestion, graph/search and realtime boundaries is complete, with all critical/high findings remediated or accepted.
+- [ ] Provider-side Kafka ACL, object-storage IAM and managed data-store access denial tests prove tenant isolation cannot be bypassed outside application code.
 
 Evidence:
 
 - Secret/identity architecture: `docs/secrets-and-transport.md`; Helm renders `ExternalSecret` and per-workload service accounts. External provider bindings and staging reconciliation logs still required.
 - TLS and ACL verification:
-- Authentication/tenant isolation report:
+- Authentication/tenant isolation report: `docs/application-security.md`
 
 ## 4. Infrastructure and Kubernetes
 
@@ -101,6 +103,7 @@ Evidence:
 - [ ] Representative load tests cover ingestion, NLP, graph/search projection, API queries, realtime clients, and notifications.
 - [ ] Kafka lag, throughput, latency, error-rate, and saturation targets are documented.
 - [ ] Rate limits, payload limits, concurrency bounds, and timeouts are configured and tested.
+- [ ] Deployed ingress/WAF/CDN/load-balancer body-size, timeout and abuse-control behavior matches application limits.
 - [ ] Neo4j/OpenSearch/PostgreSQL capacity and index plans are supported by measurements.
 - [ ] Expected infrastructure cost and per-tenant or per-document cost envelopes are approved.
 
