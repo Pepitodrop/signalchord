@@ -215,28 +215,34 @@ def severity_bands(
 ) -> list[Instruction]:
     """Map the current score value to a severity code without branching.
 
-    The score remains consumed. The resulting severity code is left on stack.
+    The score is consumed and the resulting severity code is left on the stack.
+    The macro uses stack operations only, so it preserves all caller-owned local
+    registers.
     """
     if not (medium_score <= high_score <= critical_score):
         raise ValueError("severity thresholds must be ordered")
     return [
-        Instruction(Op.STORE_LOCAL, 15),
-        Instruction(Op.LOAD_LOCAL, 15),
-        Instruction(Op.PUSH_CONST, critical_score),
-        Instruction(Op.GTE),
-        Instruction(Op.PUSH_CONST, critical),
-        Instruction(Op.LOAD_LOCAL, 15),
-        Instruction(Op.PUSH_CONST, high_score),
-        Instruction(Op.GTE),
-        Instruction(Op.PUSH_CONST, high),
-        Instruction(Op.LOAD_LOCAL, 15),
+        Instruction(Op.PUSH_CONST, low),
+        Instruction(Op.OVER),
         Instruction(Op.PUSH_CONST, medium_score),
         Instruction(Op.GTE),
-        Instruction(Op.PUSH_CONST, medium),
-        Instruction(Op.PUSH_CONST, low),
-        Instruction(Op.SELECT),
-        Instruction(Op.SELECT),
-        Instruction(Op.SELECT),
+        Instruction(Op.PUSH_CONST, medium - low),
+        Instruction(Op.MUL),
+        Instruction(Op.ADD),
+        Instruction(Op.OVER),
+        Instruction(Op.PUSH_CONST, high_score),
+        Instruction(Op.GTE),
+        Instruction(Op.PUSH_CONST, high - medium),
+        Instruction(Op.MUL),
+        Instruction(Op.ADD),
+        Instruction(Op.OVER),
+        Instruction(Op.PUSH_CONST, critical_score),
+        Instruction(Op.GTE),
+        Instruction(Op.PUSH_CONST, critical - high),
+        Instruction(Op.MUL),
+        Instruction(Op.ADD),
+        Instruction(Op.SWAP),
+        Instruction(Op.DROP),
     ]
 
 
