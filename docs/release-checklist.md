@@ -94,9 +94,9 @@ Evidence:
 
 Evidence:
 
-- Backup/restore report:
-- Replay/rebuild report:
-- Failure-injection report:
+- Backup/restore report: repository-side matrix and runbook are in `recovery/recovery-matrix.json`, `docs/recovery-architecture.md`, and `docs/runbooks/backup-restore.md`; staging restore drill evidence still required.
+- Replay/rebuild report: Kafka replay runbook exists in `docs/runbooks/replay.md`; OpenSearch/derived rebuild requirements are documented in `docs/recovery-architecture.md`; raw staging replay/rebuild evidence still required.
+- Failure-injection report: dependency and rollback runbooks exist in `docs/runbooks/dependency-outage.md` and `docs/runbooks/rollback-forward-repair.md`; staging game-day evidence still required.
 
 ## 7. Performance and cost
 

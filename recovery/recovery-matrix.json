@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "matrix_id": "signalchord-recovery-v1",
+  "authoritative_stores": [
+    {
+      "name": "postgresql",
+      "owner": "platform",
+      "authoritative_for": ["tenants", "users", "rbac", "sources", "watchlists", "policies", "alerts", "notification delivery ledger", "transactional outbox"],
+      "rpo_minutes": 15,
+      "rto_minutes": 60,
+      "restore_drill_required": true,
+      "rebuild_source": "managed database backups plus retained migration history",
+      "validation": ["rails db:migrate:status", "tenant isolation request specs", "article-to-alert canary", "outbox age is bounded"]
+    },
+    {
+      "name": "kafka",
+      "owner": "platform",
+      "authoritative_for": ["durable processing history within retained topic windows", "consumer replay checkpoints"],
+      "rpo_minutes": 5,
+      "rto_minutes": 60,
+      "restore_drill_required": true,
+      "rebuild_source": "managed broker replication and retained topic backups or mirror",
+      "validation": ["topic catalog matches deployed topics", "consumer group offsets recorded", "duplicate replay produces idempotent outcomes"]
+    },
+    {
+      "name": "object_storage",
+      "owner": "platform",
+      "authoritative_for": ["permitted raw document bytes", "fetch metadata", "deletion tombstones"],
+      "rpo_minutes": 15,
+      "rto_minutes": 120,
+      "restore_drill_required": true,
+      "rebuild_source": "versioned bucket replication and lifecycle policy",
+      "validation": ["tenant prefix restore", "object hash reconciliation", "deletion tombstone preservation"]
+    },
+    {
+      "name": "neo4j",
+      "owner": "platform",
+      "authoritative_for": ["graph nodes", "relationships", "temporal validity", "evidence links", "graph-derived signals"],
+      "rpo_minutes": 30,
+      "rto_minutes": 180,
+      "restore_drill_required": true,
+      "rebuild_source": "managed graph backups plus replayable graph.mutation-requested.v1 events inside retention",
+      "validation": ["graph constraints present", "stable-id counts reconcile", "tenant predicates pass"]
+    },
+    {
+      "name": "secrets_and_configuration",
+      "owner": "security",
+      "authoritative_for": ["runtime secret references", "workload identity bindings", "environment configuration"],
+      "rpo_minutes": 30,
+      "rto_minutes": 60,
+      "restore_drill_required": true,
+      "rebuild_source": "secret manager versions, Git history, provider IAM state",
+      "validation": ["ExternalSecret reconciles", "no local-only endpoints in production manifests", "rotation evidence retained"]
+    }
+  ],
+  "derived_stores": [
+    {
+      "name": "opensearch",
+      "owner": "platform",
+      "derived_from": ["document.normalized.v1", "entity.resolved.v1", "claim.clustered.v1", "object_storage"],
+      "rpo_minutes": 0,
+      "rto_minutes": 240,
+      "rebuildable": true,
+      "validation": ["document count matches authoritative records", "tenant-prefixed IDs", "query p95 within capacity threshold"]
+    },
+    {
+      "name": "redis",
+      "owner": "platform",
+      "derived_from": ["active sessions", "rate-limit counters", "realtime subscriptions"],
+      "rpo_minutes": 0,
+      "rto_minutes": 30,
+      "rebuildable": true,
+      "validation": ["service reconnects", "rate limits restart safely", "no durable business state stored"]
+    }
+  ],
+  "rollback": {
+    "immutable_digest_required": true,
+    "pre_rollback_canary": "scripts/smoke-test.sh",
+    "post_rollback_canary": "scripts/smoke-test.sh",
+    "irreversible_change_policy": "forward-repair only; do not reverse incompatible event contracts or destructive migrations"
+  },
+  "evidence_required": [
+    "restore command log with timestamps",
+    "source and restored environment identifiers",
+    "image digests and git SHA",
+    "RPO and RTO actuals",
+    "article-to-alert canary result",
+    "tenant isolation validation",
+    "operator and approver"
+  ],
+  "external_blockers": [
+    "managed PostgreSQL backup and restore drill",
+    "Kafka mirror/backup and replay drill",
+    "object-storage tenant-prefix restore drill",
+    "Neo4j restore or rebuild drill",
+    "OpenSearch rebuild from authoritative records",
+    "staging rollback by immutable digest",
+    "business/security approval of RPO/RTO residual risk"
+  ]
+}
