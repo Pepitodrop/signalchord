@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from confluent_kafka import Producer
 
+from python_common.production_config import kafka_config, validate_production_config
+
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 INPUT_TOPIC = "graph.mutation-requested.v1"
 COMPLETED_TOPIC = "graph.mutation-completed.v1"
@@ -185,6 +187,7 @@ def main() -> None:
     from confluent_kafka import Consumer, Producer
     from neo4j import GraphDatabase
 
+    validate_production_config(["kafka", "neo4j"])
     running = True
 
     def stop(*_: object) -> None:
@@ -195,14 +198,15 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
 
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-graph-projector-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-graph-projector-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
-    producer = Producer({"bootstrap.servers": BROKERS, "enable.idempotence": True, "acks": "all"})
+    producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
     driver = GraphDatabase.driver(
         os.getenv("NEO4J_URI", "neo4j://localhost:7687"),
         auth=(os.getenv("NEO4J_USER", "neo4j"), os.getenv("NEO4J_PASSWORD", "signalchord-dev")),

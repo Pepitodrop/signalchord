@@ -22,6 +22,7 @@ Tenant credentials and configuration, licensed/raw source documents, graph facts
 | Source-rights violation | policy registry, robots/terms metadata, adapter enforcement, retention/deletion tombstones | source-policy contract tests and deletion drill |
 | Cross-tenant access | tenant claims, policy authorization, injected graph predicates, tenant cache/object prefixes | negative integration tests for every resource type |
 | Kafka event forgery | mTLS/SASL, ACLs, schema validation, producer identity, audit metadata | unauthorized producer tests |
+| Production service starts with local credentials or plaintext endpoints | `SIGNALCHORD_ENV=production` validators reject development defaults, localhost endpoints and missing TLS/SASL/certificate settings | unit tests plus staging startup validation |
 | Poison/replay storms | bounded retries, DLQ, idempotency ledger, replay approvals and rate limits | failure-recovery and replay load tests |
 | Graph injection/expensive query | approved parameterized templates, depth/result/time budgets, no public Cypher | fuzzing and query-budget tests |
 | Prompt/model manipulation | source text treated as data, fixed extraction APIs, model versioning, evidence validation | adversarial fixture suite |

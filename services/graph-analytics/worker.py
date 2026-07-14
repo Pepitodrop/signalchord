@@ -10,6 +10,7 @@ from confluent_kafka import Consumer, Producer
 from neo4j import GraphDatabase
 
 from app import AnalysisRequest, analyze
+from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 NEO4J_URI = os.getenv("NEO4J_URI", "neo4j://localhost:7687")
@@ -18,6 +19,7 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "signalchord-dev")
 
 
 def main() -> None:
+    validate_production_config(["kafka", "neo4j"])
     running = True
 
     def stop(*_: object) -> None:
@@ -27,14 +29,15 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-graph-analytics-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-graph-analytics-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
-    producer = Producer({"bootstrap.servers": BROKERS, "enable.idempotence": True, "acks": "all"})
+    producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
     driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
     consumer.subscribe(["graph.analytics-requested.v1"])
     try:

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from confluent_kafka import Consumer, Producer
 
+from python_common.production_config import kafka_config, validate_production_config
 from resolver import DEFAULT_ALIASES, resolve_mention
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
@@ -165,6 +166,7 @@ def relation_graph_events(source: dict, payload: dict) -> list[tuple[str, dict]]
 
 
 def main() -> None:
+    validate_production_config(["kafka"])
     running = True
 
     def stop(*_: object) -> None:
@@ -174,14 +176,15 @@ def main() -> None:
     signal.signal(signal.SIGINT, stop)
     signal.signal(signal.SIGTERM, stop)
     consumer = Consumer(
-        {
-            "bootstrap.servers": BROKERS,
-            "group.id": "signalchord-entity-resolution-v1",
-            "enable.auto.commit": False,
-            "auto.offset.reset": "earliest",
-        }
+        kafka_config(
+            **{
+                "group.id": "signalchord-entity-resolution-v1",
+                "enable.auto.commit": False,
+                "auto.offset.reset": "earliest",
+            }
+        )
     )
-    producer = Producer({"bootstrap.servers": BROKERS, "enable.idempotence": True, "acks": "all"})
+    producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
     consumer.subscribe(["entity.mention-extracted.v1", "relationship.extracted.v1"])
     try:
         while running:

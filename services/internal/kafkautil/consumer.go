@@ -30,8 +30,10 @@ func (h groupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sa
 }
 
 func Consume(ctx context.Context, brokers []string, groupID string, topics []string, handle MessageHandler) error {
-	cfg := sarama.NewConfig()
-	cfg.Version = sarama.V3_7_0_0
+	cfg, err := NewConfig()
+	if err != nil {
+		return err
+	}
 	cfg.Consumer.Group.Rebalance.GroupStrategies = []sarama.BalanceStrategy{sarama.NewBalanceStrategySticky()}
 	cfg.Consumer.Offsets.Initial = sarama.OffsetOldest
 	cfg.Consumer.Return.Errors = true

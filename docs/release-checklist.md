@@ -45,7 +45,7 @@ Evidence:
 
 Evidence:
 
-- Secret/identity architecture:
+- Secret/identity architecture: `docs/secrets-and-transport.md`; Helm renders `ExternalSecret` and per-workload service accounts. External provider bindings and staging reconciliation logs still required.
 - TLS and ACL verification:
 - Authentication/tenant isolation report:
 
