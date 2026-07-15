@@ -1,0 +1,60 @@
+name: Helm Digest Policy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: helm-digest-policy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify-production-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - name: Test image-reference policy
+        run: python3 scripts/test_validate_helm_policy.py
+      - name: Verify production chart fails without release digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
+            --set global.existingSecret=signalchord-runtime \
+            >/tmp/unexpected-production.yaml 2>/tmp/missing-digests.err; then
+            echo "Production chart unexpectedly rendered without immutable image digests" >&2
+            exit 1
+          fi
+          grep -Fq 'global.imageDigests.' /tmp/missing-digests.err
+      - name: Verify production chart rejects malformed digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
+            --values scripts/fixtures/helm-production-digests.yaml \
+            --set global.existingSecret=signalchord-runtime \
+            --set-string global.imageDigests.signalchord-web=not-a-digest \
+            >/tmp/unexpected-malformed-production.yaml 2>/tmp/malformed-digest.err; then
+            echo "Production chart unexpectedly rendered with a malformed image digest" >&2
+            exit 1
+          fi
+          grep -Fq 'must match sha256:<64 lowercase hex characters>' /tmp/malformed-digest.err
+      - name: Render and validate digest-pinned production chart
+        run: |
+          helm lint infrastructure/kubernetes/helm/signalchord
+          helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
+            --values scripts/fixtures/helm-production-digests.yaml \
+            --set global.existingSecret=signalchord-runtime \
+            >/tmp/signalchord-production-digests.yaml
+          python3 scripts/validate_helm_policy.py \
+            /tmp/signalchord-production-digests.yaml \
+            --environment production

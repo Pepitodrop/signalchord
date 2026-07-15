@@ -48,7 +48,7 @@ spec:
       containers:
         {{- range $container := $workload.containers }}
         - name: {{ $container.name }}
-          image: "{{ $.Values.global.imageRegistry }}/{{ $container.image }}:{{ $.Values.global.imageTag }}"
+          image: {{ include "signalchord.imageReference" (dict "root" $ "image" $container.image) | quote }}
           imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
           {{- with $container.command }}
           command: {{ toJson . }}

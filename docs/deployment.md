@@ -2,7 +2,7 @@
 
 ## Environment model
 
-Docker Compose is the reproducible local-development and CI integration topology. It is not a production topology. Production separates stateless SignalChord workloads from Kafka, Neo4j, PostgreSQL, OpenSearch, Redis and object storage. Prefer managed services or dedicated operators with tested backup and restore procedures.
+Docker Compose is the reproducible local-development and CI integration topology. It is not a production topology. Production separates stateless SignalChord workloads from Apache Kafka, Neo4j, PostgreSQL, OpenSearch, Valkey and object storage. These dependencies may be self-hosted with community software or operated by dedicated infrastructure with tested backup and restore procedures.
 
 ## Initial deployment units
 
@@ -27,7 +27,7 @@ Split a process into its own deployment only when it requires different hardware
 - Build immutable images from a protected commit.
 - Commit dependency lockfiles and use frozen installs.
 - Generate an SBOM and signed provenance; scan source, dependencies and image layers.
-- Pin production images by digest or a digest-backed immutable tag.
+- Pin every production image by its verified `sha256` registry digest.
 - Verify Protobuf compatibility before promotion.
 - Promote the same image digest through staging and production.
 
@@ -38,20 +38,38 @@ and verification procedure.
 
 ## Kubernetes/Helm
 
-The chart under `infrastructure/kubernetes/helm/signalchord` deploys stateless application workloads. It expects externally provisioned Kafka/Schema Registry, Neo4j, PostgreSQL, Redis, object storage, OpenSearch and OpenTelemetry endpoints.
+The chart under `infrastructure/kubernetes/helm/signalchord` deploys stateless application workloads. It expects externally provisioned Apache Kafka, Neo4j, PostgreSQL, Valkey, object storage, OpenSearch and OpenTelemetry endpoints. The verified path uses versioned Protobuf contracts and a first-party graph projector, so Schema Registry and Kafka Connect are not required.
+
+Create a protected release-values file from the verified `image-digests.txt` artifact. The keys are the image names used by the chart, and values are registry digests—not tags:
+
+```yaml
+global:
+  imageDigests:
+    signalchord-control-plane: sha256:<verified-digest>
+    signalchord-document-fetcher: sha256:<verified-digest>
+    signalchord-stream-normalizer: sha256:<verified-digest>
+    signalchord-python: sha256:<verified-digest>
+    signalchord-realtime-gateway: sha256:<verified-digest>
+    signalchord-web: sha256:<verified-digest>
+    signalchord-feed-collector: sha256:<verified-digest>
+```
+
+Deploy the exact release candidate with both the environment overlay and the protected digest file:
 
 ```bash
 helm upgrade --install signalchord infrastructure/kubernetes/helm/signalchord \
   --namespace signalchord --create-namespace \
-  --values values.production.yaml \
-  --set global.imageTag=sha-<verified-commit>
+  --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
+  --values values.production.digests.yaml
 ```
+
+Production rendering fails if any enabled image lacks a digest or supplies a value that does not match `sha256:` followed by 64 lowercase hexadecimal characters. Commit-SHA tags remain permitted for staging validation, but they are not accepted by the production manifest policy because registry tags can be moved.
 
 Required production values include:
 
 - an External Secrets Operator/CSI runtime secret source for `signalchord-runtime`;
 - real service endpoints;
-- an immutable image tag;
+- verified image digests for every enabled image;
 - environment-specific NetworkPolicy namespaces/CIDRs;
 - ingress host, TLS secret and controller namespace;
 - measured per-container resources.
@@ -65,10 +83,6 @@ See [Kubernetes and Helm hardening](kubernetes-hardening.md) for environment ove
 ## Autoscaling
 
 HPA support is included but disabled. Enable it only after measurement. For Kafka workers, consumer lag and processing latency are generally more useful than CPU alone, and replica counts cannot usefully exceed relevant topic partitions.
-
-## Kafka Connect
-
-The verified local path uses the first-party graph projector. Kafka Connect is optional and lives under the `connect` Compose profile. Treat connector configuration as a separately tested integration; do not make core startup depend on a plugin downloaded at image-build time.
 
 ## Rollout order
 

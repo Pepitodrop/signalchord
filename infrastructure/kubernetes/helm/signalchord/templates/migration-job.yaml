@@ -28,7 +28,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: migrate
-          image: "{{ .Values.global.imageRegistry }}/{{ .Values.migrationJob.image }}:{{ .Values.global.imageTag }}"
+          image: {{ include "signalchord.imageReference" (dict "root" . "image" .Values.migrationJob.image) | quote }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           command: {{ toJson .Values.migrationJob.command }}
           env:
