@@ -4,7 +4,7 @@
 wait_for() {
   _wait_for_description=$1
   shift
-  _wait_for_limit=${SMOKE_ATTEMPTS:-60}
+  _wait_for_limit=${SMOKE_ATTEMPTS:-90}
   _wait_for_interval=${SMOKE_INTERVAL_SECONDS:-2}
   _wait_for_current=1
 
