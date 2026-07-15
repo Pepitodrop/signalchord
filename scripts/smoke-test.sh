@@ -12,7 +12,7 @@ VELATO_URL=${VELATO_URL:-http://localhost:${VELATO_HOST_PORT:-8091}}
 GRAPH_ANALYTICS_URL=${GRAPH_ANALYTICS_URL:-http://localhost:${GRAPH_ANALYTICS_HOST_PORT:-8092}}
 WEB_URL=${WEB_URL:-http://localhost:${WEB_HOST_PORT:-5173}}
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/smoke-test-lib.sh
 . "$SCRIPT_DIR/smoke-test-lib.sh"
 
