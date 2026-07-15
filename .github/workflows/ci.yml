@@ -155,6 +155,7 @@ jobs:
       - run: find scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck
       - run: python3 scripts/validate_workflow_actions.py
       - run: python3 scripts/test_validate_workflow_actions.py
+      - run: python3 scripts/test_validate_helm_policy.py
       - run: python3 scripts/test_release_manifest.py
       - run: python3 scripts/validate_observability.py
       - run: python3 scripts/validate_capacity.py
@@ -199,7 +200,7 @@ jobs:
           python3 scripts/validate_helm_policy.py /tmp/signalchord-staging.yaml --environment staging
           helm template signalchord infrastructure/kubernetes/helm/signalchord \
             --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
-            --set global.imageTag=sha-1234567 \
+            --values scripts/fixtures/helm-production-digests.yaml \
             --set global.existingSecret=signalchord-runtime >/tmp/signalchord-production.yaml
           python3 scripts/validate_helm_policy.py /tmp/signalchord-production.yaml --environment production
       - name: Validate JSON documents
@@ -220,7 +221,7 @@ jobs:
           helm template signalchord infrastructure/kubernetes/helm/signalchord \
             --namespace signalchord \
             --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
-            --set global.imageTag=sha-1234567 \
+            --values scripts/fixtures/helm-production-digests.yaml \
             --set global.existingSecret=signalchord-runtime \
             --set externalSecret.enabled=false >/tmp/signalchord-production.yaml
           kubectl apply --namespace signalchord --dry-run=client --validate=false -f /tmp/signalchord-production.yaml
