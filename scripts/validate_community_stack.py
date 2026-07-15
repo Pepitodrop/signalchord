@@ -14,6 +14,12 @@ COMPOSE_FILES = (
     Path("docker-compose.override.yml"),
     Path("docker-compose.projector.yml"),
 )
+RUNTIME_FILES = COMPOSE_FILES + (
+    Path(".env.example"),
+    Path("scripts/dev-up.sh"),
+    Path("scripts/smoke-test.sh"),
+    Path("scripts/create-topics.sh"),
+)
 
 FORBIDDEN_PATTERNS = {
     "Confluent container image": re.compile(r"\bconfluentinc/", re.IGNORECASE),
@@ -36,21 +42,22 @@ REQUIRED_PATTERNS = {
 
 def validate(root: Path = ROOT) -> None:
     failures: list[str] = []
-    combined = []
+    compose_parts: list[str] = []
 
-    for relative in COMPOSE_FILES:
+    for relative in RUNTIME_FILES:
         path = root / relative
         if not path.exists():
-            failures.append(f"missing required Compose file: {relative}")
+            failures.append(f"missing required community runtime file: {relative}")
             continue
         text = path.read_text(encoding="utf-8")
-        combined.append(f"\n# {relative}\n{text}")
+        if relative in COMPOSE_FILES:
+            compose_parts.append(f"\n# {relative}\n{text}")
 
         for description, pattern in FORBIDDEN_PATTERNS.items():
             if pattern.search(text):
                 failures.append(f"{relative}: contains forbidden {description}")
 
-    compose_text = "".join(combined)
+    compose_text = "".join(compose_parts)
     for description, pattern in REQUIRED_PATTERNS.items():
         if not pattern.search(compose_text):
             failures.append(f"community stack is missing {description}")
