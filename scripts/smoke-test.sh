@@ -4,7 +4,6 @@ COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.yml:docker-compose.override.yml:dock
 export COMPOSE_FILE
 TOKEN=${SIGNALCHORD_TOKEN:-signalchord-dev-token}
 API=${SIGNALCHORD_API_URL:-http://localhost:${CONTROL_PLANE_HOST_PORT:-3000}}
-SCHEMA_REGISTRY_URL=${SCHEMA_REGISTRY_URL:-http://localhost:${SCHEMA_REGISTRY_HOST_PORT:-8081}}
 OPENSEARCH_URL=${OPENSEARCH_URL:-http://localhost:${OPENSEARCH_HOST_PORT:-9200}}
 REALTIME_URL=${REALTIME_URL:-http://localhost:${REALTIME_HOST_PORT:-8088}}
 GRAPH_QUERY_URL=${GRAPH_QUERY_URL:-http://localhost:${GRAPH_QUERY_HOST_PORT:-8090}}
@@ -55,7 +54,6 @@ check_graph_analytics() {
     | grep -Fq 'graph_centrality'
 }
 
-wait_for "Schema Registry readiness" check_url "$SCHEMA_REGISTRY_URL/subjects"
 wait_for "OpenSearch readiness" check_url "$OPENSEARCH_URL/_cluster/health"
 wait_for "realtime gateway readiness" check_url "$REALTIME_URL/healthz"
 wait_for "graph query readiness" check_url "$GRAPH_QUERY_URL/healthz"
