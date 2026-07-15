@@ -4,6 +4,8 @@ This directory is reserved for non-secret, reviewable evidence produced for a sp
 
 Evidence should identify the release tag, commit SHA, image digests, environment, execution time, responsible operator, command or runbook used, and the resulting pass/fail decision.
 
+Use `template.md` and name committed records `evidence-<release>-<gate>.md` or `evidence-<release>-<gate>.json`. The directory allowlist intentionally rejects other filenames so accidental exports and arbitrary artifacts are not added without an explicit review decision.
+
 Recommended evidence categories:
 
 - target-cluster admission, NetworkPolicy, TLS, and pod-security validation;
