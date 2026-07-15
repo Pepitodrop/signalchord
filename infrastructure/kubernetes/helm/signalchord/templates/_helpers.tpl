@@ -4,7 +4,8 @@
 {{- define "signalchord.imageReference" -}}
 {{- $root := .root -}}
 {{- $image := .image -}}
-{{- $digest := default "" (index $root.Values.global.imageDigests $image) -}}
+{{- $digests := default dict $root.Values.global.imageDigests -}}
+{{- $digest := default "" (index $digests $image) -}}
 {{- if and (eq $root.Values.global.environment "production") (not $digest) -}}
 {{- fail (printf "global.imageDigests.%s is required for production" $image) -}}
 {{- end -}}
