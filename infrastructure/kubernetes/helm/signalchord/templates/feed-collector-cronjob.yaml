@@ -30,7 +30,7 @@ spec:
             seccompProfile: {type: RuntimeDefault}
           containers:
             - name: feed-collector
-              image: "{{ .Values.global.imageRegistry }}/{{ .Values.feedCollector.image }}:{{ .Values.global.imageTag }}"
+              image: {{ include "signalchord.imageReference" (dict "root" . "image" .Values.feedCollector.image) | quote }}
               imagePullPolicy: {{ .Values.global.imagePullPolicy }}
               env:
                 - {name: SIGNALCHORD_ENV, value: {{ .Values.global.environment | quote }}}
