@@ -6,7 +6,7 @@ export COMPOSE_FILE
 # Bring up stateful infrastructure first. Application consumers must not start
 # until Kafka topics, the graph schema and local search settings exist.
 docker compose --profile slice up -d --build --wait --wait-timeout 300 \
-  kafka schema-registry neo4j postgres redis minio opensearch \
+  kafka neo4j postgres valkey minio opensearch \
   otel-collector prometheus grafana sample-source
 
 ./scripts/create-topics.sh

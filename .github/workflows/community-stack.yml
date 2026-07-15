@@ -1,0 +1,36 @@
+name: Community Stack
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docker-compose*.yml'
+      - 'infrastructure/docker/**'
+      - 'scripts/validate_community_stack.py'
+      - 'scripts/test_validate_community_stack.py'
+      - 'docs/community-self-hosting.md'
+  pull_request:
+    paths:
+      - 'docker-compose*.yml'
+      - 'infrastructure/docker/**'
+      - 'scripts/validate_community_stack.py'
+      - 'scripts/test_validate_community_stack.py'
+      - 'docs/community-self-hosting.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Validate community runtime policy
+        run: python3 scripts/validate_community_stack.py
+      - name: Test community runtime policy
+        run: python3 scripts/test_validate_community_stack.py
+      - name: Validate Compose model
+        run: docker compose --profile slice config --quiet
