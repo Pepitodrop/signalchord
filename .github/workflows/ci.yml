@@ -185,7 +185,7 @@ jobs:
               sys.exit(1)
           PY
       - run: docker compose --profile slice config --quiet
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - name: Validate Helm chart
         run: |
           helm lint infrastructure/kubernetes/helm/signalchord
@@ -211,7 +211,7 @@ jobs:
     needs: [repository-quality]
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
       - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
         with:
           cluster_name: signalchord-chart
