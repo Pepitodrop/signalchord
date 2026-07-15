@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=scripts/smoke-test-lib.sh
 . "$SCRIPT_DIR/smoke-test-lib.sh"
 
