@@ -1,0 +1,10 @@
+# Synthetic, non-deployable digest values used only to exercise fail-closed Helm rendering in CI.
+global:
+  imageDigests:
+    signalchord-control-plane: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    signalchord-document-fetcher: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+    signalchord-stream-normalizer: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+    signalchord-python: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+    signalchord-realtime-gateway: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+    signalchord-web: sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+    signalchord-feed-collector: sha256:1111111111111111111111111111111111111111111111111111111111111111
