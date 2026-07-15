@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIRECTORY = Path(".github/workflows")
 USES_PATTERN = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?([^'\"\s#]+)")
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+DOCKER_DIGEST_PATTERN = re.compile(r"^docker://[^@\s]+@sha256:[0-9a-fA-F]{64}$")
 PERMISSIONS_PATTERN = re.compile(r"^(?P<indent>\s*)permissions:\s*(?P<value>[^#\s]+)?\s*(?:#.*)?$")
 PERMISSION_ENTRY_PATTERN = re.compile(
     r"^(?P<indent>\s+)(?P<name>[a-z-]+):\s*(?P<value>read|write|none)\s*(?:#.*)?$"
@@ -75,8 +76,9 @@ def permission_blocks(path: Path, failures: list[str], root: Path) -> dict[str, 
             failures.append(f"{relative}:{index + 1}: duplicate permissions block for {scope}")
 
         if inline_value:
-            blocks[scope] = {"*": inline_value}
-            if inline_value == "write-all":
+            normalized = inline_value.strip("'\"")
+            blocks[scope] = {"*": normalized}
+            if normalized == "write-all":
                 failures.append(f"{relative}:{index + 1}: permissions: write-all is forbidden")
             index += 1
             continue
@@ -108,24 +110,47 @@ def permission_blocks(path: Path, failures: list[str], root: Path) -> dict[str, 
     return blocks
 
 
-def validate_release_permissions(root: Path, failures: list[str]) -> None:
-    path = root / WORKFLOW_DIRECTORY / "release.yml"
-    if not path.exists():
+def write_permissions(permissions: dict[str, str]) -> list[str]:
+    return sorted(name for name, value in permissions.items() if value in {"write", "write-all"})
+
+
+def validate_permissions(
+    path: Path,
+    blocks: dict[str, dict[str, str]],
+    failures: list[str],
+    root: Path,
+) -> None:
+    relative = path.relative_to(root)
+    workflow_permissions = blocks.get("workflow")
+    if workflow_permissions is None:
+        failures.append(f"{relative}: workflow must declare explicit top-level permissions")
+    elif "*" in workflow_permissions:
+        failures.append(f"{relative}: top-level permissions must use an explicit permission map")
+
+    if path.name == "release.yml":
+        for scope, expected in EXPECTED_RELEASE_PERMISSIONS.items():
+            actual = blocks.get(scope)
+            if actual != expected:
+                failures.append(
+                    f"{relative}: {scope} permissions must be exactly {expected}, got {actual}"
+                )
+
+        for scope, permissions in blocks.items():
+            if scope in EXPECTED_RELEASE_PERMISSIONS:
+                continue
+            writes = write_permissions(permissions)
+            if writes:
+                failures.append(
+                    f"{relative}: unexpected write permissions in {scope}: {', '.join(writes)}"
+                )
         return
 
-    relative = path.relative_to(root)
-    blocks = permission_blocks(path, failures, root)
-    for scope, expected in EXPECTED_RELEASE_PERMISSIONS.items():
-        actual = blocks.get(scope)
-        if actual != expected:
-            failures.append(f"{relative}: {scope} permissions must be exactly {expected}, got {actual}")
-
     for scope, permissions in blocks.items():
-        if scope in EXPECTED_RELEASE_PERMISSIONS:
-            continue
-        writes = sorted(name for name, value in permissions.items() if value in {"write", "write-all"})
+        writes = write_permissions(permissions)
         if writes:
-            failures.append(f"{relative}: unexpected write permissions in {scope}: {', '.join(writes)}")
+            failures.append(
+                f"{relative}: write permissions are not allowed in {scope}: {', '.join(writes)}"
+            )
 
 
 def validate(root: Path = ROOT) -> None:
@@ -136,7 +161,9 @@ def validate(root: Path = ROOT) -> None:
 
     for path in files:
         relative = path.relative_to(root)
-        permission_blocks(path, failures, root)
+        blocks = permission_blocks(path, failures, root)
+        validate_permissions(path, blocks, failures, root)
+
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             match = USES_PATTERN.match(line)
             if not match:
@@ -146,9 +173,9 @@ def validate(root: Path = ROOT) -> None:
             if reference.startswith("./"):
                 continue
             if reference.startswith("docker://"):
-                if "@sha256:" not in reference:
+                if not DOCKER_DIGEST_PATTERN.fullmatch(reference):
                     failures.append(
-                        f"{relative}:{line_number}: container actions must use an immutable sha256 digest: {reference}"
+                        f"{relative}:{line_number}: container actions must use a full immutable sha256 digest: {reference}"
                     )
                 continue
             if "@" not in reference:
@@ -160,8 +187,6 @@ def validate(root: Path = ROOT) -> None:
                 failures.append(
                     f"{relative}:{line_number}: external actions must be pinned to a full 40-character commit SHA: {reference}"
                 )
-
-    validate_release_permissions(root, failures)
 
     if failures:
         print("workflow security validation failed:", file=sys.stderr)
