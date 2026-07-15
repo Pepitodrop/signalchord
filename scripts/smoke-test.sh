@@ -12,38 +12,68 @@ VELATO_URL=${VELATO_URL:-http://localhost:${VELATO_HOST_PORT:-8091}}
 GRAPH_ANALYTICS_URL=${GRAPH_ANALYTICS_URL:-http://localhost:${GRAPH_ANALYTICS_HOST_PORT:-8092}}
 WEB_URL=${WEB_URL:-http://localhost:${WEB_HOST_PORT:-5173}}
 
-curl -fsS "$SCHEMA_REGISTRY_URL/subjects" >/dev/null
-curl -fsS "$OPENSEARCH_URL/_cluster/health" >/dev/null
-curl -fsS "$REALTIME_URL/healthz" >/dev/null
-curl -fsS "$GRAPH_QUERY_URL/healthz" >/dev/null
-curl -fsS "$VELATO_URL/healthz" >/dev/null
-curl -fsS "$GRAPH_ANALYTICS_URL/healthz" >/dev/null
-curl -fsS "$API/healthz" | grep -q '"status":"ok"'
-curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/sources" | grep -q 'Fixture Feed'
-curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/watchlists" | grep -q 'company:acme'
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=scripts/smoke-test-lib.sh
+. "$SCRIPT_DIR/smoke-test-lib.sh"
+
+check_url() {
+  curl -fsS "$1" >/dev/null
+}
+
+check_api_health() {
+  curl -fsS "$API/healthz" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"'
+}
+
+check_api_contains() {
+  endpoint=$1
+  expected=$2
+  curl -fsS -H "Authorization: Bearer $TOKEN" "$API$endpoint" | grep -Fq "$expected"
+}
+
+check_alert() {
+  check_api_contains "/api/v1/alerts" "alert_score"
+}
+
+neo4j_count_at_least() {
+  query=$1
+  minimum=$2
+  count=$(docker compose exec -T neo4j cypher-shell -u neo4j -p signalchord-dev --format plain "$query" | tail -n 1 | tr -d '"\r')
+  case ${count:-} in
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  [ "$count" -ge "$minimum" ]
+}
+
+check_search_projection() {
+  curl -fsS -H 'Content-Type: application/json' "$OPENSEARCH_URL/signalchord-entities/_search" \
+    -d '{"query":{"match_all":{}}}' | grep -Fq 'company:acme'
+}
+
+check_graph_analytics() {
+  curl -fsS -H 'Content-Type: application/json' "$GRAPH_ANALYTICS_URL/v1/analyze" \
+    -d '{"tenant_id":"00000000-0000-4000-8000-000000000001","entity_id":"company:acme","lookback_days":30}' \
+    | grep -Fq 'graph_centrality'
+}
+
+wait_for "Schema Registry readiness" check_url "$SCHEMA_REGISTRY_URL/subjects"
+wait_for "OpenSearch readiness" check_url "$OPENSEARCH_URL/_cluster/health"
+wait_for "realtime gateway readiness" check_url "$REALTIME_URL/healthz"
+wait_for "graph query readiness" check_url "$GRAPH_QUERY_URL/healthz"
+wait_for "Velato readiness" check_url "$VELATO_URL/healthz"
+wait_for "graph analytics readiness" check_url "$GRAPH_ANALYTICS_URL/healthz"
+wait_for "control-plane readiness" check_api_health
+wait_for "fixture source seeding" check_api_contains "/api/v1/sources" "Fixture Feed"
+wait_for "fixture watchlist seeding" check_api_contains "/api/v1/watchlists" "company:acme"
 
 docker compose --profile slice run --rm feed-collector >/dev/null
 
-attempt=0
-while [ "$attempt" -lt 36 ]; do
-  if curl -fsS -H "Authorization: Bearer $TOKEN" "$API/api/v1/alerts" | grep -q 'alert_score'; then break; fi
-  attempt=$((attempt + 1)); sleep 5
-done
-[ "$attempt" -lt 36 ] || { echo "No durable alert observed" >&2; exit 1; }
-
-count=$(docker compose exec -T neo4j cypher-shell -u neo4j -p signalchord-dev --format plain "MATCH (d:Document) RETURN count(d)" | tail -n 1 | tr -d '"\r')
-[ "${count:-0}" -ge 1 ] || { echo "No Document node observed" >&2; exit 1; }
-entities=$(docker compose exec -T neo4j cypher-shell -u neo4j -p signalchord-dev --format plain "MATCH (e:Entity) RETURN count(e)" | tail -n 1 | tr -d '"\r')
-[ "${entities:-0}" -ge 2 ] || { echo "Expected resolved entities" >&2; exit 1; }
-claims=$(docker compose exec -T neo4j cypher-shell -u neo4j -p signalchord-dev --format plain "MATCH (c:Claim) RETURN count(c)" | tail -n 1 | tr -d '"\r')
-[ "${claims:-0}" -ge 1 ] || { echo "Expected extracted claims" >&2; exit 1; }
-relations=$(docker compose exec -T neo4j cypher-shell -u neo4j -p signalchord-dev --format plain "MATCH ()-[r:PARTNERED_WITH]->() RETURN count(r)" | tail -n 1 | tr -d '"\r')
-[ "${relations:-0}" -ge 1 ] || { echo "Expected partnership relationship" >&2; exit 1; }
-
-curl -fsS -H 'Content-Type: application/json' "$OPENSEARCH_URL/signalchord-entities/_search" -d '{"query":{"match_all":{}}}' | grep -q 'company:acme'
-curl -fsS -H 'Content-Type: application/json' "$GRAPH_ANALYTICS_URL/v1/analyze" \
-  -d '{"tenant_id":"00000000-0000-4000-8000-000000000001","entity_id":"company:acme","lookback_days":30}' \
-  | grep -q 'graph_centrality'
-curl -fsS "$WEB_URL/" >/dev/null
+wait_for "durable alert creation" check_alert
+wait_for "Document graph projection" neo4j_count_at_least "MATCH (d:Document) RETURN count(d)" 1
+wait_for "Entity graph projection" neo4j_count_at_least "MATCH (e:Entity) RETURN count(e)" 2
+wait_for "Claim graph projection" neo4j_count_at_least "MATCH (c:Claim) RETURN count(c)" 1
+wait_for "partnership relationship projection" neo4j_count_at_least "MATCH ()-[r:PARTNERED_WITH]->() RETURN count(r)" 1
+wait_for "OpenSearch entity projection" check_search_projection
+wait_for "graph analytics result" check_graph_analytics
+wait_for "web application readiness" check_url "$WEB_URL/"
 
 echo "SignalChord v1 article-to-alert smoke test passed."
