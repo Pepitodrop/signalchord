@@ -28,6 +28,16 @@ class CommunityStackValidatorTest(unittest.TestCase):
         (root / "docker-compose.yml").write_text(compose, encoding="utf-8")
         (root / "docker-compose.override.yml").write_text("services: {}\n", encoding="utf-8")
         (root / "docker-compose.projector.yml").write_text("services: {}\n", encoding="utf-8")
+        (root / ".env.example").write_text("REDIS_URL=redis://valkey:6379/0\n", encoding="utf-8")
+
+        scripts = root / "scripts"
+        scripts.mkdir(parents=True)
+        (scripts / "dev-up.sh").write_text("#!/bin/sh\ndocker compose up kafka valkey\n", encoding="utf-8")
+        (scripts / "smoke-test.sh").write_text("#!/bin/sh\necho smoke\n", encoding="utf-8")
+        (scripts / "create-topics.sh").write_text(
+            "#!/bin/sh\n/opt/kafka/bin/kafka-topics.sh --version\n", encoding="utf-8"
+        )
+
         docs = root / "docs"
         docs.mkdir(parents=True)
         (docs / "community-self-hosting.md").write_text("# Community\n", encoding="utf-8")
@@ -57,10 +67,19 @@ class CommunityStackValidatorTest(unittest.TestCase):
             self.write_fixture(root, BASE_COMPOSE + "  old:\n    image: redis:7.4.4-alpine\n")
             self.assert_invalid(root)
 
-    def test_schema_registry_fails(self) -> None:
+    def test_schema_registry_service_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.write_fixture(root, BASE_COMPOSE + "  schema-registry:\n    image: example/registry:1\n")
+            self.assert_invalid(root)
+
+    def test_stale_schema_registry_smoke_check_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_fixture(root)
+            (root / "scripts" / "smoke-test.sh").write_text(
+                "#!/bin/sh\ncurl http://schema-registry:8081/subjects\n", encoding="utf-8"
+            )
             self.assert_invalid(root)
 
     def test_paid_llm_key_fails(self) -> None:
@@ -73,6 +92,13 @@ class CommunityStackValidatorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.write_fixture(root, BASE_COMPOSE.replace("valkey/valkey:8.1.3-alpine", "example/cache:1"))
+            self.assert_invalid(root)
+
+    def test_missing_runtime_script_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_fixture(root)
+            (root / "scripts" / "smoke-test.sh").unlink()
             self.assert_invalid(root)
 
 
