@@ -9,13 +9,13 @@ x-app-environment: &app-environment
   MINIO_SECRET_KEY: signalchord-dev-secret
   MINIO_BUCKET: raw-documents
   MINIO_SECURE: "false"
-  REDIS_URL: redis://redis:6379/0
+  REDIS_URL: redis://valkey:6379/0
   OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
   WEB_ORIGIN: http://localhost:5173
 
 services:
   kafka:
-    image: confluentinc/cp-kafka:7.7.1
+    image: apache/kafka:4.3.0
     hostname: kafka
     ports: ["${KAFKA_HOST_PORT:-29092}:29092"]
     environment:
@@ -30,56 +30,18 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     volumes: ["kafka-data:/var/lib/kafka/data"]
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 10s
       timeout: 5s
       retries: 20
-  schema-registry:
-    image: confluentinc/cp-schema-registry:7.7.1
-    ports: ["${SCHEMA_REGISTRY_HOST_PORT:-8081}:8081"]
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-    depends_on: {kafka: {condition: service_healthy}}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/subjects >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-  kafka-connect:
-    profiles: [connect]
-    build: {context: ., dockerfile: infrastructure/docker/connect/Dockerfile}
-    ports: ["${KAFKA_CONNECT_HOST_PORT:-8083}:8083"]
-    environment:
-      CONNECT_BOOTSTRAP_SERVERS: kafka:9092
-      CONNECT_REST_ADVERTISED_HOST_NAME: kafka-connect
-      CONNECT_REST_PORT: 8083
-      CONNECT_GROUP_ID: signalchord-connect
-      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
-      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
-      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
-      CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_STATUS_STORAGE_REPLICATION_FACTOR: 1
-      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
-      CONNECT_VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
-      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
-      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/usr/share/java/neo4j
-      CONNECT_CONFIG_PROVIDERS: file
-      CONNECT_CONFIG_PROVIDERS_FILE_CLASS: org.apache.kafka.common.config.provider.FileConfigProvider
-    volumes: ["./infrastructure/docker/connect/neo4j.properties:/run/secrets/neo4j.properties:ro"]
-    depends_on: {kafka: {condition: service_healthy}, neo4j: {condition: service_healthy}}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
   neo4j:
     image: neo4j:5.26-community
     ports: ["${NEO4J_HTTP_HOST_PORT:-7474}:7474", "${NEO4J_BOLT_HOST_PORT:-7687}:7687"]
@@ -104,13 +66,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-  redis:
-    image: redis:7.4.4-alpine
-    ports: ["${REDIS_HOST_PORT:-6379}:6379"]
-    command: ["redis-server", "--appendonly", "yes"]
-    volumes: ["redis-data:/data"]
+  valkey:
+    image: valkey/valkey:8.1.3-alpine
+    ports: ["${VALKEY_HOST_PORT:-6379}:6379"]
+    command: ["valkey-server", "--appendonly", "yes"]
+    volumes: ["valkey-data:/data"]
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -179,7 +141,7 @@ services:
     profiles: [slice]
     build: {context: ., dockerfile: infrastructure/docker/go-service.Dockerfile, args: {TARGET: ./stream-normalizer/cmd}}
     environment: {<<: *app-environment}
-    depends_on: {kafka: {condition: service_healthy}, minio: {condition: service_healthy}, redis: {condition: service_healthy}}
+    depends_on: {kafka: {condition: service_healthy}, minio: {condition: service_healthy}, valkey: {condition: service_healthy}}
     restart: unless-stopped
   nlp-worker:
     profiles: [slice]
@@ -223,7 +185,7 @@ volumes:
   kafka-data:
   neo4j-data:
   postgres-data:
-  redis-data:
+  valkey-data:
   minio-data:
   opensearch-data:
   prometheus-data:
