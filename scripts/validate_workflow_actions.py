@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Require immutable references for every external GitHub Action."""
+"""Validate immutable GitHub Action refs and least-privilege workflow permissions."""
 
 from __future__ import annotations
 
@@ -12,11 +12,120 @@ ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_DIRECTORY = Path(".github/workflows")
 USES_PATTERN = re.compile(r"^\s*(?:-\s*)?uses:\s*['\"]?([^'\"\s#]+)")
 COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+PERMISSIONS_PATTERN = re.compile(r"^(?P<indent>\s*)permissions:\s*(?P<value>[^#\s]+)?\s*(?:#.*)?$")
+PERMISSION_ENTRY_PATTERN = re.compile(
+    r"^(?P<indent>\s+)(?P<name>[a-z-]+):\s*(?P<value>read|write|none)\s*(?:#.*)?$"
+)
+JOB_PATTERN = re.compile(r"^  (?P<name>[A-Za-z0-9_-]+):\s*(?:#.*)?$")
+
+EXPECTED_RELEASE_PERMISSIONS = {
+    "workflow": {"contents": "read"},
+    "job:publish-images": {
+        "contents": "read",
+        "packages": "write",
+        "id-token": "write",
+        "attestations": "write",
+    },
+    "job:release": {"contents": "write"},
+}
 
 
 def workflow_files(root: Path) -> list[Path]:
     directory = root / WORKFLOW_DIRECTORY
     return sorted((*directory.glob("*.yml"), *directory.glob("*.yaml")))
+
+
+def permission_blocks(path: Path, failures: list[str], root: Path) -> dict[str, dict[str, str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    relative = path.relative_to(root)
+    blocks: dict[str, dict[str, str]] = {}
+    in_jobs = False
+    current_job: str | None = None
+
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line == "jobs:":
+            in_jobs = True
+            current_job = None
+        elif in_jobs:
+            job_match = JOB_PATTERN.match(line)
+            if job_match:
+                current_job = job_match.group("name")
+
+        match = PERMISSIONS_PATTERN.match(line)
+        if not match:
+            index += 1
+            continue
+
+        indent = len(match.group("indent"))
+        inline_value = match.group("value")
+        if indent == 0:
+            scope = "workflow"
+        elif indent == 4 and current_job:
+            scope = f"job:{current_job}"
+        else:
+            failures.append(
+                f"{relative}:{index + 1}: permissions block has unsupported indentation or scope"
+            )
+            index += 1
+            continue
+
+        if scope in blocks:
+            failures.append(f"{relative}:{index + 1}: duplicate permissions block for {scope}")
+
+        if inline_value:
+            blocks[scope] = {"*": inline_value}
+            if inline_value == "write-all":
+                failures.append(f"{relative}:{index + 1}: permissions: write-all is forbidden")
+            index += 1
+            continue
+
+        entries: dict[str, str] = {}
+        cursor = index + 1
+        while cursor < len(lines):
+            candidate = lines[cursor]
+            if not candidate.strip() or candidate.lstrip().startswith("#"):
+                cursor += 1
+                continue
+            candidate_indent = len(candidate) - len(candidate.lstrip())
+            if candidate_indent <= indent:
+                break
+            entry = PERMISSION_ENTRY_PATTERN.match(candidate)
+            if not entry or len(entry.group("indent")) != indent + 2:
+                failures.append(
+                    f"{relative}:{cursor + 1}: malformed permission entry in {scope}: {candidate.strip()}"
+                )
+            else:
+                name = entry.group("name")
+                if name in entries:
+                    failures.append(f"{relative}:{cursor + 1}: duplicate permission {name} in {scope}")
+                entries[name] = entry.group("value")
+            cursor += 1
+        blocks[scope] = entries
+        index = cursor
+
+    return blocks
+
+
+def validate_release_permissions(root: Path, failures: list[str]) -> None:
+    path = root / WORKFLOW_DIRECTORY / "release.yml"
+    if not path.exists():
+        return
+
+    relative = path.relative_to(root)
+    blocks = permission_blocks(path, failures, root)
+    for scope, expected in EXPECTED_RELEASE_PERMISSIONS.items():
+        actual = blocks.get(scope)
+        if actual != expected:
+            failures.append(f"{relative}: {scope} permissions must be exactly {expected}, got {actual}")
+
+    for scope, permissions in blocks.items():
+        if scope in EXPECTED_RELEASE_PERMISSIONS:
+            continue
+        writes = sorted(name for name, value in permissions.items() if value in {"write", "write-all"})
+        if writes:
+            failures.append(f"{relative}: unexpected write permissions in {scope}: {', '.join(writes)}")
 
 
 def validate(root: Path = ROOT) -> None:
@@ -27,6 +136,7 @@ def validate(root: Path = ROOT) -> None:
 
     for path in files:
         relative = path.relative_to(root)
+        permission_blocks(path, failures, root)
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             match = USES_PATTERN.match(line)
             if not match:
@@ -51,12 +161,16 @@ def validate(root: Path = ROOT) -> None:
                     f"{relative}:{line_number}: external actions must be pinned to a full 40-character commit SHA: {reference}"
                 )
 
+    validate_release_permissions(root, failures)
+
     if failures:
-        print("workflow action pin validation failed:", file=sys.stderr)
+        print("workflow security validation failed:", file=sys.stderr)
         print("\n".join(f"- {failure}" for failure in failures), file=sys.stderr)
         raise SystemExit(1)
 
-    print(f"validated immutable action references in {len(files)} workflow files")
+    print(
+        f"validated immutable action references and permission boundaries in {len(files)} workflow files"
+    )
 
 
 if __name__ == "__main__":
