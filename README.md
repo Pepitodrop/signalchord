@@ -12,7 +12,7 @@ The reference article-to-alert flow includes:
 
 1. Go RSS/Atom discovery, fetching and normalization.
 2. Kafka event contracts and versioned Protobuf schemas.
-3. MinIO-backed immutable source storage and Redis deduplication.
+3. MinIO-backed immutable source storage and Valkey deduplication.
 4. Deterministic Python extraction, entity resolution and claim processing.
 5. A first-party, idempotent Kafka-to-Neo4j graph projector.
 6. OpenSearch projection, graph query and analytics APIs.
@@ -21,7 +21,23 @@ The reference article-to-alert flow includes:
 9. React analyst UI, Expo mobile client and an authenticated realtime gateway.
 10. Docker Compose integration tests and a consolidated Helm chart for stateless workloads.
 
-The default verified path deliberately avoids requiring a third-party Kafka Connect plugin. Kafka Connect configuration remains available as an optional integration for environments that validate and operate it separately.
+The verified path uses its own graph projector and versioned Protobuf contracts. It does not require Confluent Schema Registry, Kafka Connect, a proprietary LLM API, or another paid hosted service.
+
+## Community self-hosting profile
+
+The local reference stack is designed to run entirely with self-hosted community software:
+
+- Apache Kafka
+- PostgreSQL
+- Neo4j Community Edition
+- Valkey
+- MinIO
+- OpenSearch
+- OpenTelemetry Collector
+- Prometheus
+- Grafana OSS
+
+No licence fee or paid API subscription is required to run the repository-owned reference flow. Running it still consumes your own machine or server resources, and optional external services such as domains, email delivery, mobile stores, managed databases or cloud hosting can cost money. See [Community self-hosting](docs/community-self-hosting.md).
 
 ## Languages and what they do
 
@@ -73,7 +89,7 @@ Source modules remain independently testable, but the initial Kubernetes topolog
 - realtime gateway
 - web
 
-Stateful infrastructure—Kafka, PostgreSQL, Neo4j, Redis, object storage and OpenSearch—is expected to be externally operated or managed in production. Docker Compose remains the local and CI reference runtime.
+Stateful infrastructure—Kafka, PostgreSQL, Neo4j, Valkey, object storage and OpenSearch—is expected to be externally operated or managed in production. Docker Compose remains the local and CI reference runtime.
 
 See [Deployment](docs/deployment.md) and the Helm chart under `infrastructure/kubernetes/helm/signalchord`.
 
@@ -111,4 +127,4 @@ Making the source public does not mean a hosted SignalChord deployment is produc
 
 ## License
 
-SignalChord source code is licensed under the [Apache License 2.0](LICENSE). Third-party services, images, connectors, datasets and model artifacts retain their own licenses and terms. See [NOTICE](NOTICE) and the [license notes](docs/license-recommendation.md).
+SignalChord source code is licensed under the [Apache License 2.0](LICENSE). Third-party services, images, connectors, datasets and model artifacts retain their own licenses and terms. See [NOTICE](NOTICE), [Community self-hosting](docs/community-self-hosting.md), and the [license notes](docs/license-recommendation.md).
