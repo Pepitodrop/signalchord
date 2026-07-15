@@ -33,6 +33,20 @@ jobs:
             exit 1
           fi
           grep -Fq 'global.imageDigests.' /tmp/missing-digests.err
+      - name: Verify production chart rejects malformed digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          if helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-production.yaml \
+            --values scripts/fixtures/helm-production-digests.yaml \
+            --set global.existingSecret=signalchord-runtime \
+            --set-string global.imageDigests.signalchord-web=not-a-digest \
+            >/tmp/unexpected-malformed-production.yaml 2>/tmp/malformed-digest.err; then
+            echo "Production chart unexpectedly rendered with a malformed image digest" >&2
+            exit 1
+          fi
+          grep -Fq 'must match sha256:<64 lowercase hex characters>' /tmp/malformed-digest.err
       - name: Render and validate digest-pinned production chart
         run: |
           helm lint infrastructure/kubernetes/helm/signalchord
