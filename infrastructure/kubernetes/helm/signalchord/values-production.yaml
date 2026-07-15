@@ -1,5 +1,7 @@
 global:
-  imageTag: sha-0000000
+  # Production is fail-closed: provide every released image under imageDigests.
+  imageTag: digest-required
+  imageDigests: {}
   environment: production
   imagePullPolicy: IfNotPresent
   config:
