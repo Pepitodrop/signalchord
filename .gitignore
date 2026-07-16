@@ -21,6 +21,9 @@ venv/
 /log/*.log
 /tmp/
 /storage/
+/backups/
+/signalchord-backups/
+*.age
 *.mid.generated
 .DS_Store
 .idea/
