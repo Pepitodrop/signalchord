@@ -19,113 +19,298 @@ paths:
       tags: [Authentication]
       summary: Revoke the current session token
       responses:
-        '204': {description: Revoked}
+        '204': {description: Session revoked}
+  /sessions:
+    get:
+      tags: [Authentication]
+      summary: List the current user's active tenant sessions
+      responses: {'200': {description: Session list}}
+  /sessions/{id}:
+    delete:
+      tags: [Authentication]
+      summary: Revoke one of the current user's tenant sessions
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses:
+        '204': {description: Session revoked}
+  /invitations:
+    get:
+      tags: [Onboarding]
+      summary: List tenant invitations for owners and admins
+      responses: {'200': {description: Invitation list}}
+    post:
+      tags: [Onboarding]
+      summary: Create a tenant invitation
+      responses: {'201': {description: Invitation created with one-time token}}
+  /invitations/{id}:
+    delete:
+      tags: [Onboarding]
+      summary: Revoke an open tenant invitation
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses:
+        '204': {description: Invitation revoked}
+  /invitations/accept:
+    post:
+      tags: [Onboarding]
+      security: []
+      summary: Accept a tenant invitation and create a session
+      responses:
+        '201': {description: Invitation accepted and session established}
+        '401': {description: Invitation token is invalid, expired, accepted or revoked}
+  /memberships:
+    get:
+      tags: [Administration]
+      summary: List tenant memberships for owners and admins
+      responses: {'200': {description: Membership list}}
+  /memberships/{id}:
+    patch:
+      tags: [Administration]
+      summary: Update tenant membership role or disabled state
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses: {'200': {description: Membership updated}}
+    delete:
+      tags: [Administration]
+      summary: Suspend a tenant membership and revoke its active sessions
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses:
+        '204': {description: Membership suspended}
+        '403': {description: Last enabled owner cannot be removed}
+  /usage_limit:
+    get:
+      tags: [Administration]
+      summary: Show tenant usage limits and billing state
+      responses: {'200': {description: Usage limit}}
+    patch:
+      tags: [Administration]
+      summary: Update tenant usage limits and billing state
+      responses: {'200': {description: Usage limit updated}}
+  /support_tickets:
+    get:
+      tags: [Support]
+      summary: List tenant support tickets
+      responses: {'200': {description: Support ticket list}}
+    post:
+      tags: [Support]
+      summary: Open a tenant-scoped support, incident, security, billing or data request
+      responses: {'201': {description: Support ticket created}}
+  /support_tickets/{id}:
+    get:
+      tags: [Support]
+      summary: Show a tenant support ticket
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses: {'200': {description: Support ticket}}
+    patch:
+      tags: [Support]
+      summary: Update support ticket status or severity; owner/admin only
+      parameters:
+        - {$ref: '#/components/parameters/Uuid'}
+      responses: {'200': {description: Support ticket updated}}
   /organizations:
     get:
-      summary: List organizations visible to the authenticated user
-      responses:
-        '200': {description: Organization list}
+      tags: [Organizations]
+      summary: List organizations visible to the current user
+      responses: {'200': {description: Organization list}}
   /sources:
     get:
-      summary: List governed sources for the active tenant
-      responses:
-        '200': {description: Source list}
+      tags: [Sources]
+      summary: List source registrations and ingestion-policy status
+      responses: {'200': {description: Source list}}
     post:
-      summary: Register a governed source
+      tags: [Sources]
+      summary: Register a permitted source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SourceCreate'}
       responses:
-        '201': {description: Source registered}
+        '202': {description: Source accepted and outbox event scheduled}
   /watchlists:
     get:
-      summary: List tenant watchlists
-      responses:
-        '200': {description: Watchlist list}
+      tags: [Watchlists]
+      summary: List watchlists
+      responses: {'200': {description: Watchlist list}}
     post:
-      summary: Create a watchlist
-      responses:
-        '201': {description: Watchlist created}
-  /alerts:
-    get:
-      summary: List alerts
-      parameters:
-        - {name: unread, in: query, schema: {type: boolean}}
-      responses:
-        '200': {description: Alert list}
-  /policies:
-    get:
-      summary: List alert policies
-      responses:
-        '200': {description: Policy list}
-    post:
-      summary: Create an alert policy
-      responses:
-        '201': {description: Policy created}
-  /policies/{id}/upload_velato:
-    post:
-      summary: Upload and validate a Velato MIDI policy
-      parameters:
-        - {name: id, in: path, required: true, schema: {type: string}}
-      responses:
-        '202': {description: Policy version validated}
-  /investigations:
-    get:
-      summary: List saved investigations
-      responses:
-        '200': {description: Investigation list}
-    post:
-      summary: Create an investigation
-      responses:
-        '201': {description: Investigation created}
+      tags: [Watchlists]
+      summary: Create a watchlist referencing stable graph entity identifiers
+      responses: {'201': {description: Watchlist created}}
   /search:
     get:
-      summary: Search tenant-scoped projections
+      tags: [Search]
+      summary: Search articles and entities through the OpenSearch projection
       parameters:
-        - {name: q, in: query, required: true, schema: {type: string}}
-      responses:
-        '200': {description: Search results}
+        - {name: q, in: query, required: true, schema: {type: string, minLength: 1, maxLength: 500}}
+        - {name: cursor, in: query, schema: {type: string}}
+      responses: {'200': {description: Search results}}
   /entities/{stable_id}:
     get:
-      summary: Fetch one tenant-scoped entity projection
+      tags: [Entities]
+      summary: Get an evidence-first entity profile
       parameters:
-        - {name: stable_id, in: path, required: true, schema: {type: string}}
+        - {$ref: '#/components/parameters/StableId'}
       responses:
-        '200': {description: Entity projection}
+        '200': {description: Entity profile}
+        '404': {description: Entity not found or not visible}
   /entities/{stable_id}/timeline:
     get:
-      summary: Execute the approved timeline graph query
+      tags: [Timelines]
+      summary: Execute the approved entity-timeline graph query
       parameters:
-        - {name: stable_id, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: Timeline results}
-  /entities/{stable_id}/graph:
-    get:
-      summary: Execute the approved neighborhood graph query
-      parameters:
-        - {name: stable_id, in: path, required: true, schema: {type: string}}
-      responses:
-        '200': {description: Graph results}
-  /governance_requests:
-    get:
-      summary: List tenant export, deletion, and source-takedown requests
-      responses:
-        '200': {description: Governance request list}
+        - {$ref: '#/components/parameters/StableId'}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+      responses: {'200': {description: Temporal observations and evidence}}
+  /graph/query:
     post:
-      summary: Submit an idempotent governance request
-      parameters:
-        - {name: Idempotency-Key, in: header, required: true, schema: {type: string}}
+      tags: [Graph]
+      summary: Execute an approved graph-query template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template, parameters]
+              properties:
+                template: {type: string, enum: [entity_timeline, shortest_path, contradictory_claims, corroborated_claims, source_diversity, watched_entity_articles, organization_relationship_changes, propagated_claims, event_to_companies]}
+                parameters: {type: object, additionalProperties: true}
       responses:
-        '202': {description: Governance request accepted}
-  /notification_endpoints:
-    get:
-      summary: List the authenticated user's notification endpoints
-      responses:
-        '200': {description: Endpoint list}
+        '200': {description: Bounded graph result}
+        '422': {description: Invalid template parameters or query budget}
+  /paths:
     post:
-      summary: Register an encrypted notification endpoint
+      tags: [Graph]
+      summary: Find a bounded path between visible entities
+      responses: {'200': {description: Paths and evidence}}
+  /claims/{stable_id}:
+    get:
+      tags: [Claims]
+      summary: Get source claims, extraction state, corroboration, contradiction and review status
+      parameters:
+        - {$ref: '#/components/parameters/StableId'}
+      responses: {'200': {description: Claim detail}}
+  /articles/{stable_id}:
+    get:
+      tags: [Articles]
+      summary: Get article metadata and permitted evidence snippets
+      parameters:
+        - {$ref: '#/components/parameters/StableId'}
+      responses: {'200': {description: Article detail}}
+  /investigations:
+    get:
+      tags: [Investigations]
+      summary: List saved investigations
+      responses: {'200': {description: Investigation list}}
+    post:
+      tags: [Investigations]
+      summary: Create a saved investigation and graph layout
+      responses: {'201': {description: Investigation created}}
+  /alerts:
+    get:
+      tags: [Alerts]
+      summary: List durable alerts
+      responses: {'200': {description: Alert list}}
+  /alerts/{stable_id}:
+    get:
+      tags: [Alerts]
+      summary: Get alert, policy trace, graph paths and evidence
+      parameters:
+        - {$ref: '#/components/parameters/StableId'}
+      responses: {'200': {description: Alert detail}}
+  /policies:
+    get:
+      tags: [Policies]
+      summary: List policy metadata and versions
+      responses: {'200': {description: Policy list}}
+    post:
+      tags: [Policies]
+      summary: Create policy metadata
+      responses: {'201': {description: Policy created}}
+  /policies/{stable_id}/velato:
+    post:
+      tags: [Policies]
+      summary: Upload a Velato-compatible MIDI policy version
+      parameters:
+        - {$ref: '#/components/parameters/StableId'}
+      requestBody:
+        required: true
+        content:
+          audio/midi:
+            schema: {type: string, contentEncoding: base64, maxLength: 180000}
       responses:
-        '201': {description: Endpoint registered}
+        '202': {description: Program accepted for validation}
+        '422': {description: Program rejected with safe decompilation errors}
+  /policies/{stable_id}/simulate:
+    post:
+      tags: [Policies]
+      summary: Simulate a policy with explicit scalar inputs
+      parameters:
+        - {$ref: '#/components/parameters/StableId'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/PolicyInputs'}
+      responses: {'200': {description: Deterministic result and execution trace}}
+  /exports:
+    post:
+      tags: [Exports]
+      summary: Request a governed JSON, CSV or image export
+      responses: {'202': {description: Export scheduled}}
+  /admin/audit-events:
+    get:
+      tags: [Administration]
+      summary: List authorized audit records
+      responses: {'200': {description: Audit events}}
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
-      bearerFormat: opaque
+      bearerFormat: JWT
+  parameters:
+    Uuid:
+      name: id
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+    StableId:
+      name: stable_id
+      in: path
+      required: true
+      schema: {type: string, minLength: 3, maxLength: 256}
+  schemas:
+    SourceCreate:
+      type: object
+      required: [name, adapter, endpoint, ingestion_policy]
+      properties:
+        name: {type: string, maxLength: 200}
+        adapter: {type: string, enum: [rss, atom, webhook, licensed_adapter]}
+        endpoint: {type: string, format: uri}
+        ingestion_policy:
+          type: object
+          required: [rights_status, raw_retention_days, requests_per_minute]
+          properties:
+            rights_status: {type: string, enum: [approved, pending_review, denied]}
+            raw_retention_days: {type: integer, minimum: 0, maximum: 3650}
+            requests_per_minute: {type: integer, minimum: 1, maximum: 600}
+    PolicyInputs:
+      type: object
+      additionalProperties: false
+      required: [source_trust, corroboration_count, contradiction_count, novelty, entity_relevance, graph_centrality, geographic_relevance, watchlist_match, recency, source_diversity]
+      properties:
+        source_trust: {$ref: '#/components/schemas/Scalar'}
+        corroboration_count: {type: number, minimum: 0, maximum: 10000}
+        contradiction_count: {type: number, minimum: 0, maximum: 10000}
+        novelty: {$ref: '#/components/schemas/Scalar'}
+        entity_relevance: {$ref: '#/components/schemas/Scalar'}
+        graph_centrality: {$ref: '#/components/schemas/Scalar'}
+        geographic_relevance: {$ref: '#/components/schemas/Scalar'}
+        watchlist_match: {$ref: '#/components/schemas/Scalar'}
+        recency: {$ref: '#/components/schemas/Scalar'}
+        source_diversity: {$ref: '#/components/schemas/Scalar'}
+    Scalar: {type: number, minimum: 0, maximum: 1}
