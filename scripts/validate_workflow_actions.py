@@ -25,7 +25,6 @@ EXPECTED_RELEASE_PERMISSIONS = {
         "contents": "read",
         "packages": "write",
         "id-token": "write",
-        "attestations": "write",
     },
     "job:release": {"contents": "write"},
 }
