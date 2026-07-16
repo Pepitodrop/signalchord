@@ -49,18 +49,17 @@ postgres_pod=$(kubectl -n "$NAMESPACE" get pod -l app.kubernetes.io/name=postgre
 # shellcheck disable=SC2016
 kubectl -n "$NAMESPACE" exec "$postgres_pod" -- sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --clean --if-exists --no-owner --no-privileges -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip -9 >"$OUTPUT/postgres.sql.gz"
 
-for workload in kafka neo4j valkey minio opensearch prometheus grafana; do
-  pvc=$(kubectl -n "$NAMESPACE" get pvc -l app.kubernetes.io/name="$workload" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
-  if [ -n "$pvc" ]; then
-    printf '%s\t%s\n' "$workload" "$pvc" >>"$OUTPUT/pvc-inventory.tsv"
-  fi
-done
+kubectl -n "$NAMESPACE" get pvc \
+  -o custom-columns='NAME:.metadata.name,STATUS:.status.phase,VOLUME:.spec.volumeName,STORAGE:.spec.resources.requests.storage,CLASS:.spec.storageClassName' \
+  --no-headers >"$OUTPUT/pvc-inventory.tsv"
+[ -s "$OUTPUT/pvc-inventory.tsv" ] || { echo "no persistent volume claims found" >&2; exit 1; }
 
 cat >"$OUTPUT/README.txt" <<'EOF'
 This bundle contains a PostgreSQL logical dump, Helm values/history, Kubernetes metadata and a
-PVC inventory. It intentionally does not export Kubernetes Secrets. Back up runtime credentials
-separately in an encrypted password manager or offline encrypted archive. Stateful PVC data must
-be copied while each owning workload is stopped, using the documented offline snapshot procedure.
+complete namespace PVC inventory. It intentionally does not export Kubernetes Secrets. Back up
+runtime credentials separately in an encrypted password manager or offline encrypted archive.
+Stateful PVC data must be copied while each owning workload is stopped, using the documented
+offline snapshot procedure.
 EOF
 
 (
