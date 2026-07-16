@@ -110,13 +110,13 @@ sh scripts/single-server/backup.sh \
   --yes
 ```
 
-The backup contains a PostgreSQL custom-format dump, an offline Neo4j Community dump, MinIO object data, encrypted runtime configuration, Helm release evidence, Kubernetes resource metadata, Kafka topic metadata, OpenSearch index inventory and SHA-256 checksums. Neo4j is briefly stopped to obtain a consistent Community-compatible dump. Kafka, OpenSearch and Valkey are treated as rebuildable projections or transport/cache state rather than authoritative backup data.
+The backup operation temporarily suspends feed collection and scales application deployments to zero so no repository-owned workload can mutate authoritative data during the snapshot. It then creates a PostgreSQL custom-format dump, offline Neo4j Community dumps for both the `neo4j` and `system` databases, an offline MinIO volume archive, encrypted runtime configuration, Helm release evidence, Kubernetes resource metadata, Kafka topic metadata, OpenSearch index inventory and SHA-256 checksums. MinIO and Neo4j are restarted before application replicas and the prior CronJob suspension state are restored.
 
-Copy the completed directory to storage that is not on the same physical server. A backup is not accepted until a restore drill succeeds.
+Kafka, OpenSearch and Valkey are treated as rebuildable projections or transport/cache state rather than authoritative backup data. Copy the completed directory to storage that is not on the same physical server. A backup is not accepted until a restore drill succeeds.
 
 ## Restore drill
 
-Install the same digest-addressed release into the target namespace before restoring. The restore operation is destructive: application deployments are stopped, PostgreSQL is replaced, MinIO and Neo4j volumes are cleared and loaded, and workloads are restarted only after successful restoration.
+Install the same digest-addressed release into the target namespace before restoring. The restore operation is destructive: application deployments are stopped, PostgreSQL is replaced, MinIO is cleared and loaded, both Neo4j databases are loaded offline, and workloads are restarted only after successful restoration.
 
 ```bash
 sh scripts/single-server/restore.sh \
@@ -126,7 +126,7 @@ sh scripts/single-server/restore.sh \
   --yes
 ```
 
-The script verifies every checksum before changing the cluster. On failure, application deployments remain stopped for inspection. After success, run the strong acceptance canary and verify that Kafka/OpenSearch projections rebuild from authoritative data.
+The stable `restore.sh` entrypoint dispatches to the versioned format implementation. It verifies every checksum, required artifact, authoritative data-set declaration, quiesced-snapshot marker and runtime-file permission before changing the cluster. On failure, application deployments remain stopped for inspection. After success, run the strong acceptance canary and verify that Kafka/OpenSearch projections rebuild from authoritative data.
 
 ## Updates and rollback
 
@@ -177,6 +177,6 @@ Before tagging `v1.0.0`, record:
 - successful login from desktop and phone;
 - successful permitted-feed article-to-alert acceptance without `--allow-existing-alert`;
 - successful reboot recovery;
-- successful backup restore and post-restore acceptance;
+- successful quiesced backup restore, including Neo4j `system`, and post-restore acceptance;
 - successful rollback to the preceding digest set;
 - known limitations, especially the lack of high availability and internal transport encryption.
