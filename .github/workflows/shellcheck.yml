@@ -1,0 +1,45 @@
+name: ShellCheck
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**/*.sh'
+      - '.github/workflows/shellcheck.yml'
+  pull_request:
+    paths:
+      - 'scripts/**/*.sh'
+      - '.github/workflows/shellcheck.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: shellcheck-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Run ShellCheck
+        shell: bash
+        run: |
+          set +e
+          find scripts -type f -name '*.sh' -print0 | xargs -0 shellcheck > shellcheck.log 2>&1
+          status=$?
+          cat shellcheck.log
+          exit "$status"
+      - name: Upload ShellCheck diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: shellcheck-diagnostics
+          path: shellcheck.log
+          if-no-files-found: warn
