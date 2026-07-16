@@ -1,0 +1,61 @@
+name: Bootstrap v1.0.0 release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/bootstrap-v1-release.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bootstrap-v1.0.0
+  cancel-in-progress: false
+
+jobs:
+  tag-and-dispatch:
+    if: github.repository == 'Pepitodrop/signalchord'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - name: Create immutable v1.0.0 tag and dispatch release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: v1.0.0
+          TARGET_SHA: a8f8732995315bd4607cce167b9aa2418110a5e2
+        run: |
+          set -euo pipefail
+          git fetch origin main --tags
+          git cat-file -e "${TARGET_SHA}^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            existing_sha=$(git rev-list -n 1 "$RELEASE_TAG")
+            if [ "$existing_sha" != "$TARGET_SHA" ]; then
+              echo "$RELEASE_TAG already points to $existing_sha, expected $TARGET_SHA" >&2
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$RELEASE_TAG" "$TARGET_SHA" -m "SignalChord $RELEASE_TAG"
+            git push origin "refs/tags/$RELEASE_TAG"
+          fi
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $RELEASE_TAG already exists; no dispatch needed."
+            exit 0
+          fi
+
+          gh workflow run release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f release_tag="$RELEASE_TAG"
