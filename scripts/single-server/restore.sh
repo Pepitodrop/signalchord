@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
 set -eu
 
-SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+SCRIPT_DIR=$(cd -- "$(dirname -- "$0")" && pwd)
 exec sh "$SCRIPT_DIR/restore-v1.sh" "$@"
