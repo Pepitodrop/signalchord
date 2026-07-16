@@ -19,15 +19,21 @@ PERMISSION_ENTRY_PATTERN = re.compile(
 )
 JOB_PATTERN = re.compile(r"^  (?P<name>[A-Za-z0-9_-]+):\s*(?:#.*)?$")
 
-EXPECTED_RELEASE_PERMISSIONS = {
-    "workflow": {"contents": "read"},
-    "job:publish-images": {
-        "contents": "read",
-        "packages": "write",
-        "id-token": "write",
-        "attestations": "write",
+SPECIAL_WORKFLOW_PERMISSIONS = {
+    "release.yml": {
+        "workflow": {"contents": "read"},
+        "job:publish-images": {
+            "contents": "read",
+            "packages": "write",
+            "id-token": "write",
+            "attestations": "write",
+        },
+        "job:release": {"contents": "write"},
     },
-    "job:release": {"contents": "write"},
+    "release-tag.yml": {
+        "workflow": {"actions": "read", "contents": "read"},
+        "job:tag": {"actions": "read", "contents": "write"},
+    },
 }
 
 
@@ -114,6 +120,26 @@ def write_permissions(permissions: dict[str, str]) -> list[str]:
     return sorted(name for name, value in permissions.items() if value in {"write", "write-all"})
 
 
+def validate_special_permissions(
+    path: Path,
+    blocks: dict[str, dict[str, str]],
+    expected_blocks: dict[str, dict[str, str]],
+    failures: list[str],
+    root: Path,
+) -> None:
+    relative = path.relative_to(root)
+    for scope, expected in expected_blocks.items():
+        actual = blocks.get(scope)
+        if actual != expected:
+            failures.append(f"{relative}: {scope} permissions must be exactly {expected}, got {actual}")
+    for scope, permissions in blocks.items():
+        if scope in expected_blocks:
+            continue
+        writes = write_permissions(permissions)
+        if writes:
+            failures.append(f"{relative}: unexpected write permissions in {scope}: {', '.join(writes)}")
+
+
 def validate_permissions(
     path: Path,
     blocks: dict[str, dict[str, str]],
@@ -127,30 +153,15 @@ def validate_permissions(
     elif "*" in workflow_permissions:
         failures.append(f"{relative}: top-level permissions must use an explicit permission map")
 
-    if path.name == "release.yml":
-        for scope, expected in EXPECTED_RELEASE_PERMISSIONS.items():
-            actual = blocks.get(scope)
-            if actual != expected:
-                failures.append(
-                    f"{relative}: {scope} permissions must be exactly {expected}, got {actual}"
-                )
-
-        for scope, permissions in blocks.items():
-            if scope in EXPECTED_RELEASE_PERMISSIONS:
-                continue
-            writes = write_permissions(permissions)
-            if writes:
-                failures.append(
-                    f"{relative}: unexpected write permissions in {scope}: {', '.join(writes)}"
-                )
+    expected_blocks = SPECIAL_WORKFLOW_PERMISSIONS.get(path.name)
+    if expected_blocks is not None:
+        validate_special_permissions(path, blocks, expected_blocks, failures, root)
         return
 
     for scope, permissions in blocks.items():
         writes = write_permissions(permissions)
         if writes:
-            failures.append(
-                f"{relative}: write permissions are not allowed in {scope}: {', '.join(writes)}"
-            )
+            failures.append(f"{relative}: write permissions are not allowed in {scope}: {', '.join(writes)}")
 
 
 def validate(root: Path = ROOT) -> None:
@@ -193,9 +204,7 @@ def validate(root: Path = ROOT) -> None:
         print("\n".join(f"- {failure}" for failure in failures), file=sys.stderr)
         raise SystemExit(1)
 
-    print(
-        f"validated immutable action references and permission boundaries in {len(files)} workflow files"
-    )
+    print(f"validated immutable action references and permission boundaries in {len(files)} workflow files")
 
 
 if __name__ == "__main__":
