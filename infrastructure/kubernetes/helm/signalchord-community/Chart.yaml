@@ -1,0 +1,10 @@
+apiVersion: v2
+name: signalchord-community
+description: Single-node community dependencies for personal SignalChord self-hosting
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/Pepitodrop/signalchord
+annotations:
+  signalchord.io/scope: single-owner-single-server
+  signalchord.io/high-availability: "false"

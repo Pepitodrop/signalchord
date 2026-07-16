@@ -1,0 +1,113 @@
+name: Single Server k3s
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/kubernetes/helm/signalchord-community/**'
+      - 'infrastructure/kubernetes/helm/signalchord/values-single-server.yaml'
+      - 'infrastructure/kubernetes/single-server/**'
+      - 'scripts/single-server/**'
+      - 'scripts/validate_single_server.py'
+      - 'scripts/test_validate_single_server.py'
+      - 'scripts/validate_helm_policy.py'
+      - 'scripts/test_validate_helm_policy.py'
+      - '.github/workflows/single-server-k3s.yml'
+  pull_request:
+    paths:
+      - 'infrastructure/kubernetes/helm/signalchord-community/**'
+      - 'infrastructure/kubernetes/helm/signalchord/values-single-server.yaml'
+      - 'infrastructure/kubernetes/single-server/**'
+      - 'scripts/single-server/**'
+      - 'scripts/validate_single_server.py'
+      - 'scripts/test_validate_single_server.py'
+      - 'scripts/validate_helm_policy.py'
+      - 'scripts/test_validate_helm_policy.py'
+      - '.github/workflows/single-server-k3s.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: single-server-k3s-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
+        with:
+          cluster_name: signalchord-single-server
+      - name: Prepare diagnostics directory
+        run: mkdir -p /tmp/single-server-diagnostics
+      - name: Validate repository deployment contract
+        shell: bash
+        run: |
+          set -o pipefail
+          python3 scripts/validate_single_server.py 2>&1 | tee /tmp/single-server-diagnostics/repository-policy.log
+          python3 scripts/test_validate_single_server.py 2>&1 | tee /tmp/single-server-diagnostics/repository-policy-tests.log
+          python3 scripts/test_validate_helm_policy.py 2>&1 | tee /tmp/single-server-diagnostics/helm-policy-tests.log
+          python3 scripts/single-server/test_render_digest_values.py 2>&1 | tee /tmp/single-server-diagnostics/digest-values-tests.log
+      - name: Lint and render community dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          helm lint infrastructure/kubernetes/helm/signalchord-community \
+            --set existingSecret=signalchord-runtime \
+            2>&1 | tee /tmp/single-server-diagnostics/community-helm-lint.log
+          helm template signalchord-community \
+            infrastructure/kubernetes/helm/signalchord-community \
+            --namespace signalchord \
+            --set existingSecret=signalchord-runtime \
+            > /tmp/signalchord-community.yaml \
+            2> /tmp/single-server-diagnostics/community-helm-template.err
+      - name: Render digest-pinned application profile
+        shell: bash
+        run: |
+          set -o pipefail
+          helm lint infrastructure/kubernetes/helm/signalchord \
+            2>&1 | tee /tmp/single-server-diagnostics/application-helm-lint.log
+          helm template signalchord infrastructure/kubernetes/helm/signalchord \
+            --namespace signalchord \
+            --values infrastructure/kubernetes/helm/signalchord/values-single-server.yaml \
+            --values scripts/fixtures/helm-production-digests.yaml \
+            --set global.existingSecret=signalchord-runtime \
+            --set-string ingress.host=signalchord.example.test \
+            --set-string ingress.tlsSecretName=signalchord-ingress-tls \
+            > /tmp/signalchord-application.yaml \
+            2> /tmp/single-server-diagnostics/application-helm-template.err
+          python3 scripts/validate_helm_policy.py \
+            /tmp/signalchord-application.yaml --environment single-server \
+            2>&1 | tee /tmp/single-server-diagnostics/application-policy.log
+      - name: Validate restricted admission in a disposable cluster
+        shell: bash
+        run: |
+          set -o pipefail
+          kubectl create namespace signalchord 2>&1 | tee /tmp/single-server-diagnostics/namespace.log
+          kubectl label namespace signalchord \
+            pod-security.kubernetes.io/enforce=restricted \
+            pod-security.kubernetes.io/enforce-version=latest \
+            --overwrite \
+            2>&1 | tee /tmp/single-server-diagnostics/namespace-policy.log
+          kubectl apply --namespace signalchord --server-side --dry-run=server \
+            -f /tmp/signalchord-community.yaml \
+            2>&1 | tee /tmp/single-server-diagnostics/community-kubectl-server-dry-run.log
+          kubectl apply --namespace signalchord --server-side --dry-run=server \
+            -f /tmp/signalchord-application.yaml \
+            2>&1 | tee /tmp/single-server-diagnostics/application-kubectl-server-dry-run.log
+      - name: Upload single-server diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: single-server-k3s-diagnostics
+          path: |
+            /tmp/single-server-diagnostics/
+            /tmp/signalchord-community.yaml
+            /tmp/signalchord-application.yaml
+          if-no-files-found: warn

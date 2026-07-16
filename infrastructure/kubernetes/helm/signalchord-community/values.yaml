@@ -1,0 +1,62 @@
+existingSecret: signalchord-runtime
+storageClassName: local-path
+
+images:
+  kafka: apache/kafka:4.3.0
+  postgres: postgres:17.5-alpine
+  neo4j: neo4j:5.26-community
+  valkey: valkey/valkey:8.1.3-alpine
+  minio: minio/minio:RELEASE.2025-04-22T22-12-26Z
+  minioClient: minio/mc:RELEASE.2025-04-16T18-13-26Z
+  opensearch: opensearchproject/opensearch:2.19.1
+  otelCollector: otel/opentelemetry-collector-contrib:0.128.0
+  prometheus: prom/prometheus:v3.4.1
+  grafana: grafana/grafana:12.0.2
+
+persistence:
+  kafka: 8Gi
+  postgres: 8Gi
+  neo4j: 8Gi
+  valkey: 2Gi
+  minio: 16Gi
+  opensearch: 12Gi
+  prometheus: 4Gi
+  grafana: 2Gi
+
+resources:
+  kafka:
+    requests: {cpu: 250m, memory: 768Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  postgres:
+    requests: {cpu: 150m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  neo4j:
+    requests: {cpu: 250m, memory: 1Gi}
+    limits: {cpu: "2", memory: 3Gi}
+  valkey:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  minio:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  opensearch:
+    requests: {cpu: 250m, memory: 1Gi}
+    limits: {cpu: "2", memory: 3Gi}
+  otelCollector:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  prometheus:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  grafana:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+monitoring:
+  enabled: true
+  prometheusRetention: 7d
+
+# This learning-oriented single-node profile keeps dependency traffic inside the
+# cluster network. Only the SignalChord ingress should be exposed publicly.
+networkPolicy:
+  enabled: true
