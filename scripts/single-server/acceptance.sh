@@ -31,7 +31,10 @@ while [ "$#" -gt 0 ]; do
     *) usage; exit 2 ;;
   esac
 done
-[ -n "$HOST" ] && [ -n "$TOKEN_FILE" ] || { usage; exit 2; }
+if [ -z "$HOST" ] || [ -z "$TOKEN_FILE" ]; then
+  usage
+  exit 2
+fi
 [ -s "$TOKEN_FILE" ] || { echo "token file not found or empty: $TOKEN_FILE" >&2; exit 1; }
 for tool in kubectl helm curl python3; do command -v "$tool" >/dev/null 2>&1 || { echo "$tool is required" >&2; exit 1; }; done
 TOKEN=$(sed -n '1p' "$TOKEN_FILE")
