@@ -3,5 +3,5 @@ name: signalchord
 description: Consolidated stateless SignalChord application workloads
 home: https://github.com/Pepitodrop/signalchord
 type: application
-version: 0.2.0
-appVersion: "0.2.0-alpha.1"
+version: 1.0.0
+appVersion: "1.0.0"
