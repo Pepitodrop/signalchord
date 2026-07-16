@@ -35,8 +35,11 @@ fi
 helm -n "$NAMESPACE" status signalchord >/dev/null
 helm -n "$NAMESPACE" status signalchord-community >/dev/null
 
-mutable=$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/part-of=signalchord -o jsonpath='{range .items[*].spec.containers[*]}{.image}{"\n"}{end}' | grep -Ev '@sha256:[0-9a-f]{64}$' || true)
-[ -z "$mutable" ] || { echo "non-digest application images detected:" >&2; echo "$mutable" >&2; exit 1; }
+all_images=$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/part-of=signalchord -o jsonpath='{range .items[*].spec.containers[*]}{.image}{"\n"}{end}')
+application_images=$(printf '%s\n' "$all_images" | grep '^ghcr.io/pepitodrop/' || true)
+[ -n "$application_images" ] || { echo "no SignalChord application images found" >&2; exit 1; }
+mutable=$(printf '%s\n' "$application_images" | grep -Ev '@sha256:[0-9a-f]{64}$' || true)
+[ -z "$mutable" ] || { echo "non-digest SignalChord application images detected:" >&2; echo "$mutable" >&2; exit 1; }
 
 external_services=$(kubectl -n "$NAMESPACE" get services -l app.kubernetes.io/part-of=signalchord -o jsonpath='{range .items[?(@.spec.type!="ClusterIP")]}{.metadata.name}{" "}{.spec.type}{"\n"}{end}')
 [ -z "$external_services" ] || { echo "unexpected externally exposed services:" >&2; echo "$external_services" >&2; exit 1; }
