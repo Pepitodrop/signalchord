@@ -25,7 +25,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$HOST" ] && [ -n "$DIGESTS" ] && [ -n "$RUNTIME_ENV" ] && [ "$CONFIRM" = true ] || { usage; exit 2; }
+if [ -z "$HOST" ] || [ -z "$DIGESTS" ] || [ -z "$RUNTIME_ENV" ] || [ "$CONFIRM" != true ]; then
+  usage
+  exit 2
+fi
 [ -f "$DIGESTS" ] || { echo "digest file not found: $DIGESTS" >&2; exit 1; }
 [ -f "$RUNTIME_ENV" ] || { echo "runtime env file not found: $RUNTIME_ENV" >&2; exit 1; }
 
