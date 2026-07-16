@@ -90,6 +90,8 @@ kubectl -n "$NAMESPACE" patch cronjob signalchord-feed-collector --type merge -p
 kubectl -n "$NAMESPACE" create secret generic signalchord-runtime \
   --from-env-file="$RUNTIME_ENV" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
 
+# The variables below are expanded by the shell inside the PostgreSQL container.
+# shellcheck disable=SC2016
 kubectl -n "$NAMESPACE" exec -i statefulset/postgres -- sh -ec \
   'pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists --no-owner --no-acl --exit-on-error' \
   < "$BACKUP/data/postgres.dump"
