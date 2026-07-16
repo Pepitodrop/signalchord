@@ -177,11 +177,14 @@ def validate(root: Path = ROOT) -> None:
         "v*.*.*",
         "release-manifest.json",
         "cosign sign",
-        "attest-build-provenance",
+        "cosign attest",
+        "cosign verify-attestation",
         "image-digests.txt",
     ):
         if marker not in release:
             failures.append(f"release workflow must retain publication artifact/control: {marker}")
+    if "attest-build-provenance" in release:
+        failures.append("release workflow must not require plan-gated GitHub artifact attestations")
 
     issue_config = read(root, ".github/ISSUE_TEMPLATE/config.yml")
     if "security/advisories/new" not in issue_config or "blank_issues_enabled: false" not in issue_config:
