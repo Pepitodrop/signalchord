@@ -30,9 +30,11 @@ for resource in \
   kubectl -n "$NAMESPACE" rollout status "$resource" --timeout=10m
 done
 
-for deployment in $(kubectl -n "$NAMESPACE" get deployment -l app.kubernetes.io/part-of=signalchord -o name); do
-  kubectl -n "$NAMESPACE" rollout status "$deployment" --timeout=10m
-done
+kubectl -n "$NAMESPACE" get deployment -l app.kubernetes.io/part-of=signalchord -o name |
+  while IFS= read -r deployment; do
+    [ -n "$deployment" ] || continue
+    kubectl -n "$NAMESPACE" rollout status "$deployment" --timeout=10m
+  done
 
 not_ready=$(kubectl -n "$NAMESPACE" get pods -l app.kubernetes.io/part-of=signalchord \
   -o jsonpath='{range .items[?(@.status.phase!="Running")]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}')
@@ -49,9 +51,10 @@ if [ -n "$pending_pvcs" ]; then
   exit 1
 fi
 
-curl_flags="--fail --silent --show-error --max-time 15"
-if [ "$INSECURE" = true ]; then curl_flags="$curl_flags --insecure"; fi
-# shellcheck disable=SC2086
-curl $curl_flags "https://$HOST/healthz" >/dev/null
+if [ "$INSECURE" = true ]; then
+  curl --fail --silent --show-error --max-time 15 --insecure "https://$HOST/healthz" >/dev/null
+else
+  curl --fail --silent --show-error --max-time 15 "https://$HOST/healthz" >/dev/null
+fi
 
 echo "SignalChord workloads, storage and ingress are healthy"
