@@ -22,6 +22,8 @@ REQUIRED_FILES = (
     "docs/repository-history-audit.md",
     "docs/community-self-hosting.md",
     "docs/single-server-kubernetes.md",
+    "docs/dependency-maintenance.md",
+    ".github/dependabot.yml",
     ".github/history-audit-denylist.sha256",
     ".github/ISSUE_TEMPLATE/bug_report.md",
     ".github/ISSUE_TEMPLATE/feature_request.md",
@@ -76,9 +78,30 @@ def validate(root: Path = ROOT) -> None:
         failures.append("CHANGELOG.md must contain Unreleased and v1.0.0 semantics")
 
     publication = read(root, "docs/publication-checklist.md")
-    for marker in ("complete Git history", "private to public", "mobile", "branch protection"):
+    for marker in ("complete Git history", "private to public", "mobile", "branch protection", "dependency-maintenance.md"):
         if marker.lower() not in publication.lower():
             failures.append(f"publication checklist must cover: {marker}")
+
+    dependency_policy = read(root, "docs/dependency-maintenance.md")
+    for marker in ("Security updates remain enabled", "Major upgrades", "full CI", "not auto-merged"):
+        if marker.lower() not in dependency_policy.lower():
+            failures.append(f"dependency maintenance policy must cover: {marker}")
+
+    dependabot = read(root, ".github/dependabot.yml")
+    for marker in (
+        "package-ecosystem: npm",
+        "package-ecosystem: gomod",
+        "package-ecosystem: pip",
+        "package-ecosystem: bundler",
+        "package-ecosystem: github-actions",
+        "applies-to: security-updates",
+        "open-pull-requests-limit: 2",
+        "timezone: Europe/Berlin",
+    ):
+        if marker not in dependabot:
+            failures.append(f"Dependabot release policy must retain control: {marker}")
+    if "version-update:semver-major" in dependabot:
+        failures.append("routine Dependabot policy must not automatically propose major version updates")
 
     history_audit = read(root, "docs/repository-history-audit.md")
     for marker in ("complete Git history", "Gitleaks", "hashed", "private to public"):
