@@ -1,0 +1,73 @@
+# Single-owner, single-node k3s profile. The install script overrides the host,
+# TLS secret and exact image digests for a release.
+global:
+  environment: staging
+  imageTag: digest-required
+  imageDigests: {}
+  imagePullPolicy: IfNotPresent
+  existingSecret: signalchord-runtime
+  config:
+    kafkaBrokers: kafka:9092
+    kafkaTlsEnabled: "false"
+    kafkaSaslEnabled: "false"
+    schemaRegistryUrl: ""
+    minioEndpoint: minio:9000
+    minioBucket: raw-documents
+    minioSecure: "false"
+    redisUrl: redis://valkey:6379/0
+    opensearchUrl: http://opensearch:9200
+    opensearchVerifyCerts: "false"
+    neo4jUri: neo4j://neo4j:7687
+    controlPlaneUrl: http://signalchord-control-plane:3000
+    graphQueryUrl: http://signalchord-graph-query:8090
+    graphAnalyticsUrl: http://signalchord-graph-analytics:8092
+    velatoEngineUrl: http://signalchord-alerting:8091
+    webOrigin: https://signalchord.local
+    otelEndpoint: http://otel-collector:4317
+    apiRateLimit: "300"
+    authRateLimit: "20"
+    apiMaxBodyBytes: "1048576"
+
+externalSecret:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+topologySpread:
+  enabled: false
+
+resourceQuota:
+  enabled: false
+
+workloads:
+  control-plane: {replicas: 1}
+  outbox: {replicas: 1}
+  ingestion: {replicas: 1}
+  intelligence: {replicas: 1}
+  projection: {replicas: 1}
+  graph-query: {replicas: 1}
+  graph-analytics: {replicas: 1}
+  alerting: {replicas: 1}
+  realtime: {replicas: 1}
+  web: {replicas: 1}
+
+networkPolicy:
+  enabled: true
+  ingressNamespace: kube-system
+  allowedNamespaces: []
+  publicInternetEgress:
+    enabled: true
+    workloads: [ingestion, feed-collector]
+    cidrs: [0.0.0.0/0]
+    ports: [80, 443]
+
+ingress:
+  enabled: true
+  className: traefik
+  host: signalchord.local
+  tlsSecretName: signalchord-ingress-tls
+  proxyBodySize: 1m
+  proxyConnectTimeout: "10"
+  proxySendTimeout: "60"
+  proxyReadTimeout: "3600"
