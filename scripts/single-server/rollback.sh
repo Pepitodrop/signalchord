@@ -28,9 +28,9 @@ helm -n "$NAMESPACE" history signalchord
 helm -n "$NAMESPACE" rollback signalchord "$REVISION" --wait --timeout 20m
 
 if [ "$INSECURE" = true ]; then
-  scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST" --insecure
+  sh scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST" --insecure
 else
-  scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST"
+  sh scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST"
 fi
 
 echo "rolled SignalChord back to Helm revision $REVISION"
