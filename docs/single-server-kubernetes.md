@@ -18,17 +18,19 @@ This topology prioritizes reproducibility and learning. It does not provide high
 
 ## Current repository support
 
-The repository now contains:
+The repository contains:
 
 - `infrastructure/kubernetes/helm/signalchord-community` for single-node community dependencies;
 - `infrastructure/kubernetes/helm/signalchord/values-single-server.yaml` for one-replica application workloads;
 - `scripts/single-server/render_digest_values.py` for converting release image evidence into Helm values;
 - `scripts/single-server/install.sh` for idempotent installation;
 - `scripts/single-server/health.sh` for workload, storage and HTTPS verification;
+- `scripts/single-server/backup.sh` and `restore.sh` for encrypted, checksum-verified recovery;
+- `scripts/single-server/acceptance.sh` for a live permitted-feed article-to-alert canary;
 - `scripts/single-server/update.sh` and `rollback.sh` for immutable upgrades and Helm revision rollback;
-- a dedicated CI workflow that lints and renders both charts and validates them in a disposable cluster.
+- dedicated CI that lints and renders both charts, validates restricted admission, checks the operations scripts and audits complete repository history.
 
-Backup and restore automation, a real-server acceptance canary and encrypted internal dependency transport remain required before the target server should be described as operational v1.
+Internal dependency transport is plaintext inside the single-node cluster. The profile therefore remains `staging`, not a general multi-operator production profile.
 
 ## Prerequisites
 
@@ -36,7 +38,7 @@ The target server needs:
 
 - a supported Linux distribution;
 - k3s or another Kubernetes distribution;
-- `kubectl`, Helm 3, Python 3 and `curl`;
+- `kubectl`, Helm 3, Python 3, `curl`, `age`, `tar` and `sha256sum`;
 - a default `local-path` storage class or an explicit replacement in community values;
 - `vm.max_map_count=262144` or higher for OpenSearch;
 - a trusted TLS certificate and key for the chosen hostname;
@@ -77,6 +79,55 @@ sh scripts/single-server/install.sh \
 
 The installer refuses missing digest evidence, insecure runtime-file permissions, a missing TLS Secret and an insufficient OpenSearch kernel setting. It applies the runtime Secret, installs community dependencies, initializes Kafka topics and the private MinIO bucket, deploys SignalChord by digest and runs health checks.
 
+## Kubernetes acceptance
+
+Create a token file outside Git containing one valid bearer token on its first line and protect it with mode `0600`. The deployment must already contain at least one permitted source and one watchlist.
+
+```bash
+sh scripts/single-server/acceptance.sh \
+  --host signalchord.example.com \
+  --token-file ~/.config/signalchord/acceptance.token
+```
+
+The acceptance script verifies both Helm releases, workload and PVC health, authenticated source/watchlist/alert APIs, a one-off feed-collector Job and a new durable alert. `--allow-existing-alert` weakens the canary and is intended only for troubleshooting an unchanged source; it is not valid `v1.0.0` release evidence.
+
+## Encrypted backup
+
+Generate an age identity outside Git and retain its private key separately from the server backup:
+
+```bash
+age-keygen -o ~/.config/signalchord/backup.agekey
+age-keygen -y ~/.config/signalchord/backup.agekey
+```
+
+Use the printed public recipient to create a backup directory outside the repository:
+
+```bash
+sh scripts/single-server/backup.sh \
+  --output /srv/backups/signalchord-$(date +%Y%m%d-%H%M%S) \
+  --runtime-env ~/.config/signalchord/runtime.env \
+  --age-recipient age1example... \
+  --yes
+```
+
+The backup operation temporarily suspends feed collection and scales application deployments to zero so no repository-owned workload can mutate authoritative data during the snapshot. It then creates a PostgreSQL custom-format dump, offline Neo4j Community dumps for both the `neo4j` and `system` databases, an offline MinIO volume archive, encrypted runtime configuration, Helm release evidence, Kubernetes resource metadata, Kafka topic metadata, OpenSearch index inventory and SHA-256 checksums. MinIO and Neo4j are restarted before application replicas and the prior CronJob suspension state are restored.
+
+Kafka, OpenSearch and Valkey are treated as rebuildable projections or transport/cache state rather than authoritative backup data. Copy the completed directory to storage that is not on the same physical server. A backup is not accepted until a restore drill succeeds.
+
+## Restore drill
+
+Install the same digest-addressed release into the target namespace before restoring. The restore operation is destructive: application deployments are stopped, PostgreSQL is replaced, MinIO is cleared and loaded, both Neo4j databases are loaded offline, and workloads are restarted only after successful restoration.
+
+```bash
+sh scripts/single-server/restore.sh \
+  --backup /srv/backups/signalchord-20260716-180000 \
+  --host signalchord.example.com \
+  --age-identity ~/.config/signalchord/backup.agekey \
+  --yes
+```
+
+The stable `restore.sh` entrypoint dispatches to the versioned format implementation. It verifies every checksum, required artifact, authoritative data-set declaration, quiesced-snapshot marker and runtime-file permission before changing the cluster. On failure, application deployments remain stopped for inspection. After success, run the strong acceptance canary and verify that Kafka/OpenSearch projections rebuild from authoritative data.
+
 ## Updates and rollback
 
 Update to another release using its new `image-digests.txt` artifact:
@@ -106,21 +157,9 @@ sh scripts/single-server/rollback.sh \
 - Runtime credentials are unique and are not copied from Compose examples.
 - Trusted HTTPS is required for normal browser and mobile access.
 - Grafana and other administrative services are not exposed by the charts.
+- Backups encrypt runtime secret material and must be stored off-server with restrictive permissions.
 
-The initial single-node dependency chart uses cluster-internal plaintext protocols and sets the application profile to `staging`, not `production`. This is acceptable only within the documented one-owner, one-node trust boundary. Encrypted Kafka, MinIO, Valkey, Neo4j and OpenSearch transport remains a v1 hardening task before exposing the cluster to untrusted workloads or operators.
-
-## Backup baseline
-
-The initial v1 backup contract is:
-
-- PostgreSQL logical dump;
-- Neo4j Community-compatible offline dump or volume backup;
-- MinIO bucket backup;
-- encrypted backup of configuration and secret material;
-- documented rebuild procedure for Kafka, OpenSearch and other derived projections;
-- retention of previous release digest values and Helm revision history.
-
-At least one restore and one immutable-digest rollback must succeed on the target server before the deployment is called operational.
+The initial single-node dependency chart uses cluster-internal plaintext protocols and sets the application profile to `staging`, not `production`. This is acceptable only within the documented one-owner, one-node trust boundary. Encrypted Kafka, MinIO, Valkey, Neo4j and OpenSearch transport remains required before exposing the cluster to untrusted workloads or operators.
 
 ## Mobile access
 
@@ -133,10 +172,11 @@ Before tagging `v1.0.0`, record:
 - exact server OS, k3s, Helm and container-runtime versions;
 - machine CPU, RAM and storage;
 - immutable application image digests;
+- successful exact-commit CI and complete-history audit;
 - successful Helm installation and pod health;
 - successful login from desktop and phone;
-- successful permitted-feed article-to-alert canary;
+- successful permitted-feed article-to-alert acceptance without `--allow-existing-alert`;
 - successful reboot recovery;
-- successful backup restore;
+- successful quiesced backup restore, including Neo4j `system`, and post-restore acceptance;
 - successful rollback to the preceding digest set;
 - known limitations, especially the lack of high availability and internal transport encryption.

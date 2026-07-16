@@ -4,7 +4,7 @@
 
 SignalChord is an early-stage, multi-tenant intelligence platform that ingests permitted news sources, preserves provenance, extracts entities and claims, projects them into a temporal knowledge graph, evaluates auditable alert policies, and delivers web, mobile and realtime experiences.
 
-> **Project status:** verified public-alpha quality. The repository contains a tested reference vertical slice and production-oriented deployment scaffolding. It is not yet an internet-facing production service or a finished commercial product. See [Production readiness](docs/production-readiness.md).
+> **Project status:** verified public-alpha quality. The repository contains a tested reference vertical slice and a single-owner k3s deployment package. It is not a highly available internet service or a finished commercial product. See [Production readiness](docs/production-readiness.md).
 
 ## What is implemented
 
@@ -19,13 +19,13 @@ The reference article-to-alert flow includes:
 7. Rails identity, tenancy, RBAC, sources, watchlists, alerts and audit APIs.
 8. Deterministic Velato-compatible policy evaluation.
 9. React analyst UI, Expo mobile client and an authenticated realtime gateway.
-10. Docker Compose integration tests and a consolidated Helm chart for stateless workloads.
+10. Docker Compose integration tests and Helm charts for the application and a single-server community stack.
 
 The verified path uses its own graph projector and versioned Protobuf contracts. It does not require Confluent Schema Registry, Kafka Connect, a proprietary LLM API, or another paid hosted service.
 
 ## Community self-hosting profile
 
-The local reference stack is designed to run entirely with self-hosted community software:
+The local and single-server reference stacks are designed to run entirely with self-hosted community software:
 
 - Apache Kafka
 - PostgreSQL
@@ -50,7 +50,7 @@ No licence fee or paid API subscription is required to run the repository-owned 
 | **Protocol Buffers** | Defines versioned Kafka event contracts and compatibility-safe schemas shared across services. |
 | **Cypher** | Defines Neo4j constraints, idempotent graph mutations, evidence relationships and approved graph queries. |
 | **SQL** | Backs the PostgreSQL control-plane data model through Rails migrations and Active Record. |
-| **Shell** | Automates local startup, dependency initialization, schema setup, smoke tests and operational workflows. |
+| **Shell** | Automates local startup, dependency initialization, schema setup, smoke tests, backup, restore, acceptance and operational workflows. |
 | **YAML** | Configures Docker Compose, Kubernetes and Helm, GitHub Actions, observability and service deployment settings. |
 | **HCL / Terraform** | Describes infrastructure provisioning wrappers and environment-level deployment inputs. |
 | **Dockerfile and nginx configuration** | Build reproducible service images and serve the web application through a rootless runtime with same-origin API and realtime proxying. |
@@ -89,9 +89,9 @@ Source modules remain independently testable, but the initial Kubernetes topolog
 - realtime gateway
 - web
 
-Stateful infrastructure—Kafka, PostgreSQL, Neo4j, Valkey, object storage and OpenSearch—is expected to be externally operated or managed in production. Docker Compose remains the local and CI reference runtime.
+The repository includes a single-owner, single-node k3s profile for Kafka, PostgreSQL, Neo4j Community, Valkey, MinIO, OpenSearch and observability. It uses digest-pinned application images, ClusterIP-only stateful services, restricted pod security, trusted TLS ingress, encrypted backup, checksum-verified restore and a live article-to-alert acceptance command. It is not highly available and its internal dependency transport is plaintext inside the documented one-node trust boundary.
 
-See [Deployment](docs/deployment.md) and the Helm chart under `infrastructure/kubernetes/helm/signalchord`.
+See [Single-server Kubernetes](docs/single-server-kubernetes.md), [Deployment](docs/deployment.md), and the Helm charts under `infrastructure/kubernetes/helm`.
 
 ## Repository map
 
@@ -115,13 +115,13 @@ Start with:
 
 ## Security and responsible use
 
-Use only sources you are legally permitted to collect and process. Do not deploy the example credentials from Compose. Production deployment requires external secrets, TLS/SASL, least-privilege access, source licensing, retention controls, backup/restore testing and a documented incident process.
+Use only sources you are legally permitted to collect and process. Do not deploy the example credentials from Compose. Internet deployment requires unique runtime secrets, trusted TLS, least-privilege access, source licensing, retention controls, tested backup/restore and a documented incident process. The v1 single-server profile is not a multi-operator production security boundary.
 
 Report vulnerabilities according to [SECURITY.md](SECURITY.md). Data and source constraints are described in [Data governance](docs/data-governance.md) and the [Threat model](docs/threat-model.md).
 
 ## Publication status
 
-The codebase is suitable to publish now as an **alpha/open-development repository**. The complete CI, security, image-build and Docker Compose end-to-end checks passed on the reviewed foundation commit before it was merged into `main`.
+The repository has automated public-source governance and a complete-history secret/proprietary-content gate. Change visibility from private to public only after `Repository History Audit`, full CI, workflow security, source snapshot, publication readiness and single-server k3s checks pass on the exact commit, and the manual GitHub settings in the [publication checklist](docs/publication-checklist.md) are complete.
 
 Making the source public does not mean a hosted SignalChord deployment is production-ready. Before processing real customer data, complete the operational, legal, security and reliability gates documented in [Production readiness](docs/production-readiness.md).
 

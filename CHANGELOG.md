@@ -4,17 +4,31 @@ All notable SignalChord changes are documented here. The project follows semanti
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-16
+
 ### Added
 
-- Configurable self-hosted server URL in the Expo mobile application.
-- Public-repository publication checklist and single-server Kubernetes roadmap.
-- Automated publication-readiness validation.
+- End-to-end article-to-alert reference pipeline with responsive web and Expo mobile clients.
+- Rails control plane, Kafka ingestion/realtime services, Python intelligence and graph/search projection services.
+- Community-only self-hosting stack using Apache Kafka, PostgreSQL, Neo4j Community, Valkey, MinIO and OpenSearch.
+- Digest-pinned single-owner k3s deployment profile with restricted pod security, ClusterIP-only stateful services and trusted TLS ingress.
+- Encrypted single-server backup, checksum-verified restore and live Kubernetes article-to-alert acceptance tooling.
+- Complete Git-history secret and proprietary-content audit with redacted CI evidence.
+- Public repository governance, security reporting, contribution, support and publication documentation.
+- Signed digest-addressed release images, SBOMs, vulnerability reports, provenance, checksums and release manifest generation.
 
 ### Changed
 
-- Mobile sign-in no longer prefills development credentials.
-- The required community runtime uses Apache Kafka and Valkey and requires no paid API subscription.
-- Production Helm manifests require immutable application image digests.
+- Mobile sign-in accepts a self-hosted server URL, stores it securely and no longer prefills development credentials.
+- The required community runtime uses no paid API subscription.
+- Production and release Helm manifests require immutable application image digests.
+
+### Known limitations
+
+- The supported v1 deployment is one owner on one server and is not highly available.
+- Community dependencies use plaintext transport only inside the documented single-node trust boundary; the Helm profile remains `staging` rather than a general multi-operator production profile.
+- Kafka, OpenSearch and Valkey are treated as rebuildable transport, projection or cache state; authoritative backups cover PostgreSQL, Neo4j, MinIO and encrypted runtime configuration.
+- A public app-store mobile release and commercial support are not included.
 
 ## [0.1.0-alpha] - Unreleased historical foundation
 

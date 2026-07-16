@@ -54,6 +54,7 @@ jobs:
           python3 scripts/test_validate_single_server.py 2>&1 | tee /tmp/single-server-diagnostics/repository-policy-tests.log
           python3 scripts/test_validate_helm_policy.py 2>&1 | tee /tmp/single-server-diagnostics/helm-policy-tests.log
           python3 scripts/single-server/test_render_digest_values.py 2>&1 | tee /tmp/single-server-diagnostics/digest-values-tests.log
+          python3 scripts/single-server/test_release_tooling.py 2>&1 | tee /tmp/single-server-diagnostics/release-tooling-tests.log
       - name: Lint and render community dependencies
         shell: bash
         run: |
