@@ -5,15 +5,23 @@ on:
     branches: [main]
     paths:
       - 'governance/history-audit-allowlist.json'
+      - 'release/v1.0.0.json'
       - 'scripts/audit_repository_history.py'
       - 'scripts/test_audit_repository_history.py'
+      - 'scripts/evaluate_release_runs.py'
+      - 'scripts/test_evaluate_release_runs.py'
       - '.github/workflows/history-audit.yml'
+      - '.github/workflows/release-tag.yml'
   pull_request:
     paths:
       - 'governance/history-audit-allowlist.json'
+      - 'release/v1.0.0.json'
       - 'scripts/audit_repository_history.py'
       - 'scripts/test_audit_repository_history.py'
+      - 'scripts/evaluate_release_runs.py'
+      - 'scripts/test_evaluate_release_runs.py'
       - '.github/workflows/history-audit.yml'
+      - '.github/workflows/release-tag.yml'
   workflow_dispatch:
 
 permissions:
@@ -40,8 +48,10 @@ jobs:
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
       - name: Scan all refs for secrets
         run: gitleaks git --log-opts='--all' --redact --exit-code=1 .
-      - name: Test history audit policy
-        run: python3 scripts/test_audit_repository_history.py
+      - name: Test publication and release policies
+        run: |
+          python3 scripts/test_audit_repository_history.py
+          python3 scripts/test_evaluate_release_runs.py
       - name: Audit all reachable blobs
         run: python3 scripts/audit_repository_history.py --report history-audit-report.json
       - name: Upload history audit evidence
