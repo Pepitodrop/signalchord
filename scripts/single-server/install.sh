@@ -36,7 +36,7 @@ for tool in kubectl helm python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "$tool is required" >&2; exit 1; }
 done
 
-context=$(kubectl config current-context)
+context=$(kubectl config current-context) || exit 1
 echo "Deploying SignalChord to Kubernetes context: $context"
 echo "Namespace: $NAMESPACE"
 echo "Host: $HOST"
@@ -50,10 +50,17 @@ if [ -r /proc/sys/vm/max_map_count ]; then
   fi
 fi
 
-runtime_mode=$(stat -c '%a' "$RUNTIME_ENV" 2>/dev/null || stat -f '%Lp' "$RUNTIME_ENV")
+if runtime_mode=$(stat -c '%a' "$RUNTIME_ENV" 2>/dev/null); then
+  :
+elif runtime_mode=$(stat -f '%Lp' "$RUNTIME_ENV" 2>/dev/null); then
+  :
+else
+  echo "could not determine runtime env file permissions" >&2
+  exit 1
+fi
 [ "$runtime_mode" = 600 ] || { echo "runtime env file must have mode 0600, got $runtime_mode" >&2; exit 1; }
 
-workdir=$(mktemp -d)
+workdir=$(mktemp -d) || exit 1
 trap 'rm -rf "$workdir"' EXIT INT TERM
 python3 scripts/single-server/render_digest_values.py "$DIGESTS" "$workdir/image-digests.yaml"
 
