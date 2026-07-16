@@ -1,20 +1,130 @@
 version: 2
+
+# Keep routine dependency maintenance small and reviewable on the stable release line.
+# Major version upgrades are handled as explicit migration PRs with dedicated testing.
 updates:
   - package-ecosystem: npm
     directory: /
-    schedule: {interval: weekly}
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    rebase-strategy: auto
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     groups:
-      javascript:
-        patterns: ['*']
+      javascript-compatible:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+      javascript-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(deps)"
+
   - package-ecosystem: gomod
     directory: /services
-    schedule: {interval: weekly}
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:10"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    rebase-strategy: auto
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+    groups:
+      go-compatible:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+      go-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(deps-go)"
+
   - package-ecosystem: pip
     directory: /services
-    schedule: {interval: weekly}
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:20"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    rebase-strategy: auto
+    # Python packages below 1.0 can introduce breaking changes in minor releases,
+    # so routine version updates are limited to patches. Security updates remain enabled.
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-patch
+    groups:
+      python-patches:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [patch]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(deps-py)"
+
   - package-ecosystem: bundler
     directory: /apps/control-plane
-    schedule: {interval: weekly}
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:30"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    rebase-strategy: auto
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+    groups:
+      ruby-compatible:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+      ruby-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(deps-ruby)"
+
   - package-ecosystem: github-actions
     directory: /
-    schedule: {interval: weekly}
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:40"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 2
+    rebase-strategy: auto
+    allow:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+    groups:
+      actions-compatible:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: [minor, patch]
+      actions-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "build(actions)"

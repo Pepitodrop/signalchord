@@ -32,7 +32,39 @@ class PublicationReadinessValidatorTest(unittest.TestCase):
         self.write(
             root,
             "docs/publication-checklist.md",
-            "Scan the complete Git history, test mobile, enable branch protection, then change private to public.\n",
+            "Scan the complete Git history, test mobile, enable branch protection, follow dependency-maintenance.md, then change private to public.\n",
+        )
+        self.write(
+            root,
+            "docs/dependency-maintenance.md",
+            "Security updates remain enabled. Major upgrades use dedicated work. Every change passes full CI and is not auto-merged.\n",
+        )
+        self.write(
+            root,
+            ".github/dependabot.yml",
+            """version: 2
+updates:
+  - package-ecosystem: npm
+    open-pull-requests-limit: 2
+    schedule: {interval: weekly, timezone: Europe/Berlin}
+    groups: {security: {applies-to: security-updates}}
+  - package-ecosystem: gomod
+    open-pull-requests-limit: 2
+    schedule: {interval: weekly, timezone: Europe/Berlin}
+    groups: {security: {applies-to: security-updates}}
+  - package-ecosystem: pip
+    open-pull-requests-limit: 2
+    schedule: {interval: weekly, timezone: Europe/Berlin}
+    groups: {security: {applies-to: security-updates}}
+  - package-ecosystem: bundler
+    open-pull-requests-limit: 2
+    schedule: {interval: weekly, timezone: Europe/Berlin}
+    groups: {security: {applies-to: security-updates}}
+  - package-ecosystem: github-actions
+    open-pull-requests-limit: 2
+    schedule: {interval: weekly, timezone: Europe/Berlin}
+    groups: {security: {applies-to: security-updates}}
+""",
         )
         self.write(
             root,
@@ -105,6 +137,22 @@ class PublicationReadinessValidatorTest(unittest.TestCase):
             root = Path(tmp)
             self.fixture(root)
             self.write(root, ".github/workflows/repository-history-audit.yml", "fetch-depth: 0\n")
+            self.assert_fails(root)
+
+    def test_dependabot_major_version_updates_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            path = root / ".github/dependabot.yml"
+            path.write_text(path.read_text(encoding="utf-8") + "version-update:semver-major\n", encoding="utf-8")
+            self.assert_fails(root)
+
+    def test_missing_dependabot_security_group_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            text = (root / ".github/dependabot.yml").read_text(encoding="utf-8")
+            self.write(root, ".github/dependabot.yml", text.replace("applies-to: security-updates", "applies-to: version-updates"))
             self.assert_fails(root)
 
     def test_incomplete_restore_contract_fails(self) -> None:

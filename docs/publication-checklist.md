@@ -46,7 +46,8 @@ This checklist covers publishing SignalChord as a personal open-source project. 
 - [ ] The release workflow produces signed digest-addressed images, SBOMs, vulnerability reports, provenance, checksums and a release manifest.
 - [ ] `v1.0.0` release notes list supported deployment scope, known limitations and upgrade/rollback instructions.
 - [ ] `main` is protected and pull requests require successful checks.
-- [ ] Dependabot PRs are reviewed individually rather than merged only because they are automated.
+- [ ] Dependabot is configured according to `docs/dependency-maintenance.md`: compatible routine updates remain small, security updates stay enabled, and major upgrades use dedicated migration PRs.
+- [ ] Dependency PRs pass full CI and deployment validation rather than being merged only because they are automated.
 
 ## GitHub publication settings
 
