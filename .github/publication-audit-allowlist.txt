@@ -1,2 +1,5 @@
 # One repository-relative historical path per line.
 # Add entries only after documenting ownership, redistribution rights, and why publication is safe.
+
+# Public placeholder-only configuration template. Gitleaks passed all reachable revisions.
+.env.example
