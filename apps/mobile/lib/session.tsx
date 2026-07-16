@@ -50,19 +50,31 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
       SecureStore.getItemAsync(API_URL_KEY),
     ])
       .then(([storedSession, storedApiUrl]) => {
-        if (storedSession) {
+        let resolvedApiUrl = "";
+        for (const candidate of [storedApiUrl, CONFIGURED_API_URL]) {
+          if (!candidate) continue;
+          try {
+            resolvedApiUrl = normalizeApiUrl(candidate);
+            break;
+          } catch {
+            if (candidate === storedApiUrl) {
+              void SecureStore.deleteItemAsync(API_URL_KEY);
+            }
+          }
+        }
+
+        if (resolvedApiUrl) {
+          setApiUrlState(resolvedApiUrl);
+        }
+
+        if (storedSession && resolvedApiUrl) {
           try {
             setSession(JSON.parse(storedSession) as SessionResponse);
           } catch {
             void SecureStore.deleteItemAsync(SESSION_KEY);
           }
-        }
-        if (storedApiUrl) {
-          try {
-            setApiUrlState(normalizeApiUrl(storedApiUrl));
-          } catch {
-            void SecureStore.deleteItemAsync(API_URL_KEY);
-          }
+        } else if (storedSession) {
+          void SecureStore.deleteItemAsync(SESSION_KEY);
         }
       })
       .finally(() => setReady(true));
