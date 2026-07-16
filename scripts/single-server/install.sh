@@ -80,5 +80,5 @@ helm upgrade --install signalchord \
   --set-string global.config.webOrigin="https://$HOST" \
   --wait --timeout 20m
 
-scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST"
+sh scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST"
 echo "SignalChord installation completed for https://$HOST"
