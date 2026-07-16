@@ -55,6 +55,19 @@ class RepositoryHistoryAuditTest(unittest.TestCase):
             _, findings = audit_repository_history.audit(root, denylist)
             self.assertTrue(any(item.rule == "private hashed denylist term" for item in findings))
 
+    def test_self_referential_exclusion_is_exact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.repo(root)
+            fake = "fixture ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+            self.commit(root, "scripts/test_audit_repository_history.py", fake)
+            _, findings = audit_repository_history.audit(root, root / "missing")
+            self.assertFalse(any(item.rule == "GitHub token" for item in findings))
+
+            self.commit(root, "notes.txt", fake + " copied")
+            _, findings = audit_repository_history.audit(root, root / "missing")
+            self.assertTrue(any(item.rule == "GitHub token" and item.path == "notes.txt" for item in findings))
+
 
 if __name__ == "__main__":
     unittest.main()
