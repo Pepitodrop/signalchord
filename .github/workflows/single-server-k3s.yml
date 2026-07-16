@@ -85,17 +85,22 @@ jobs:
           python3 scripts/validate_helm_policy.py \
             /tmp/signalchord-application.yaml --environment single-server \
             2>&1 | tee /tmp/single-server-diagnostics/application-policy.log
-      - name: Validate all manifests in a disposable cluster
+      - name: Validate restricted admission in a disposable cluster
         shell: bash
         run: |
           set -o pipefail
           kubectl create namespace signalchord 2>&1 | tee /tmp/single-server-diagnostics/namespace.log
-          kubectl apply --namespace signalchord --dry-run=client --validate=false \
+          kubectl label namespace signalchord \
+            pod-security.kubernetes.io/enforce=restricted \
+            pod-security.kubernetes.io/enforce-version=latest \
+            --overwrite \
+            2>&1 | tee /tmp/single-server-diagnostics/namespace-policy.log
+          kubectl apply --namespace signalchord --server-side --dry-run=server \
             -f /tmp/signalchord-community.yaml \
-            2>&1 | tee /tmp/single-server-diagnostics/community-kubectl-dry-run.log
-          kubectl apply --namespace signalchord --dry-run=client --validate=false \
+            2>&1 | tee /tmp/single-server-diagnostics/community-kubectl-server-dry-run.log
+          kubectl apply --namespace signalchord --server-side --dry-run=server \
             -f /tmp/signalchord-application.yaml \
-            2>&1 | tee /tmp/single-server-diagnostics/application-kubectl-dry-run.log
+            2>&1 | tee /tmp/single-server-diagnostics/application-kubectl-server-dry-run.log
       - name: Upload single-server diagnostics
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
