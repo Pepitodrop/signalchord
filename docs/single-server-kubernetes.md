@@ -68,7 +68,7 @@ chmod 600 ~/.config/signalchord/runtime.env
 Install using the exact signed release digests:
 
 ```bash
-scripts/single-server/install.sh \
+sh scripts/single-server/install.sh \
   --host signalchord.example.com \
   --digests ~/Downloads/image-digests.txt \
   --runtime-env ~/.config/signalchord/runtime.env \
@@ -82,7 +82,7 @@ The installer refuses missing digest evidence, insecure runtime-file permissions
 Update to another release using its new `image-digests.txt` artifact:
 
 ```bash
-scripts/single-server/update.sh \
+sh scripts/single-server/update.sh \
   --host signalchord.example.com \
   --digests ~/Downloads/image-digests-v1.0.1.txt \
   --runtime-env ~/.config/signalchord/runtime.env
@@ -92,7 +92,7 @@ Review available revisions and roll back without rebuilding images:
 
 ```bash
 helm -n signalchord history signalchord
-scripts/single-server/rollback.sh \
+sh scripts/single-server/rollback.sh \
   --revision 2 \
   --host signalchord.example.com
 ```
