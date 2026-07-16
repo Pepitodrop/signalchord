@@ -34,7 +34,7 @@ spec:
         - name: minio
           image: {{ .Values.images.minio | quote }}
           imagePullPolicy: IfNotPresent
-          args: [server, /data, --console-address, :9001]
+          args: ["server", "/data", "--console-address", ":9001"]
           env:
             - name: MINIO_ROOT_USER
               valueFrom: {secretKeyRef: {name: {{ .Values.existingSecret }}, key: MINIO_ACCESS_KEY}}
