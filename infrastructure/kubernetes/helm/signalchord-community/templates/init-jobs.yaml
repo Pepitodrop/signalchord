@@ -2,9 +2,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: signalchord-init-kafka
-  labels:
-    app.kubernetes.io/name: init-kafka
-    app.kubernetes.io/part-of: signalchord
+  labels: {app.kubernetes.io/name: init-kafka, app.kubernetes.io/part-of: signalchord}
   annotations:
     helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
@@ -14,14 +12,11 @@ spec:
   ttlSecondsAfterFinished: 300
   template:
     metadata:
-      labels:
-        app.kubernetes.io/name: init-kafka
-        app.kubernetes.io/part-of: signalchord
+      labels: {app.kubernetes.io/name: init-kafka, app.kubernetes.io/part-of: signalchord}
     spec:
       restartPolicy: OnFailure
       automountServiceAccountToken: false
-      securityContext:
-        seccompProfile: {type: RuntimeDefault}
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: topics
           image: {{ .Values.images.kafka | quote }}
@@ -37,17 +32,13 @@ spec:
                 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic "$topic" --partitions 6 --replication-factor 1 --config cleanup.policy="$cleanup" --config retention.ms="$retention"
                 /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic "$topic.dlq" --partitions 3 --replication-factor 1 --config cleanup.policy=delete --config retention.ms=2592000000
               done
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities: {drop: [ALL]}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
 ---
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: signalchord-init-minio
-  labels:
-    app.kubernetes.io/name: init-minio
-    app.kubernetes.io/part-of: signalchord
+  labels: {app.kubernetes.io/name: init-minio, app.kubernetes.io/part-of: signalchord}
   annotations:
     helm.sh/hook: post-install,post-upgrade
     helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
@@ -57,14 +48,11 @@ spec:
   ttlSecondsAfterFinished: 300
   template:
     metadata:
-      labels:
-        app.kubernetes.io/name: init-minio
-        app.kubernetes.io/part-of: signalchord
+      labels: {app.kubernetes.io/name: init-minio, app.kubernetes.io/part-of: signalchord}
     spec:
       restartPolicy: OnFailure
       automountServiceAccountToken: false
-      securityContext:
-        seccompProfile: {type: RuntimeDefault}
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, runAsGroup: 1000, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: bucket
           image: {{ .Values.images.minioClient | quote }}
@@ -79,6 +67,4 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.existingSecret }}, key: MINIO_ACCESS_KEY}}
             - name: MINIO_SECRET_KEY
               valueFrom: {secretKeyRef: {name: {{ .Values.existingSecret }}, key: MINIO_SECRET_KEY}}
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities: {drop: [ALL]}
+          securityContext: {allowPrivilegeEscalation: false, capabilities: {drop: [ALL]}}
