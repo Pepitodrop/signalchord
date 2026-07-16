@@ -7,22 +7,53 @@ OUTPUT=
 RUNTIME_ENV=
 AGE_RECIPIENT=
 CONFIRM=false
+MINIO_POD=
+MINIO_REPLICAS=
 NEO4J_POD=
 NEO4J_REPLICAS=
+DEPLOYMENT_REPLICAS=
+FEED_COLLECTOR_SUSPEND=
+APPLICATION_QUIESCED=false
 STAGING=
 
 usage() {
   echo "usage: $0 --output DIR --runtime-env FILE --age-recipient RECIPIENT [--namespace NAME] --yes" >&2
 }
 
+restore_application() {
+  if [ "$APPLICATION_QUIESCED" != true ]; then
+    return
+  fi
+  if [ -n "$DEPLOYMENT_REPLICAS" ] && [ -f "$DEPLOYMENT_REPLICAS" ]; then
+    while IFS=' ' read -r deployment replicas; do
+      [ -n "$deployment" ] || continue
+      kubectl -n "$NAMESPACE" scale "deployment/$deployment" --replicas "$replicas" >/dev/null 2>&1 || true
+    done < "$DEPLOYMENT_REPLICAS"
+  fi
+  case "$FEED_COLLECTOR_SUSPEND" in
+    true) suspend_patch='{"spec":{"suspend":true}}' ;;
+    *) suspend_patch='{"spec":{"suspend":false}}' ;;
+  esac
+  kubectl -n "$NAMESPACE" patch cronjob signalchord-feed-collector --type merge -p "$suspend_patch" >/dev/null 2>&1 || true
+  APPLICATION_QUIESCED=false
+}
+
 cleanup() {
   status=$?
+  if [ -n "$MINIO_POD" ]; then
+    kubectl -n "$NAMESPACE" delete pod "$MINIO_POD" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  fi
   if [ -n "$NEO4J_POD" ]; then
     kubectl -n "$NAMESPACE" delete pod "$NEO4J_POD" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  fi
+  if [ -n "$MINIO_REPLICAS" ]; then
+    kubectl -n "$NAMESPACE" scale statefulset/minio --replicas "$MINIO_REPLICAS" >/dev/null 2>&1 || true
   fi
   if [ -n "$NEO4J_REPLICAS" ]; then
     kubectl -n "$NAMESPACE" scale statefulset/neo4j --replicas "$NEO4J_REPLICAS" >/dev/null 2>&1 || true
   fi
+  restore_application
+  if [ -n "$DEPLOYMENT_REPLICAS" ]; then rm -f "$DEPLOYMENT_REPLICAS"; fi
   if [ -n "$STAGING" ]; then rm -rf "$STAGING"; fi
   exit "$status"
 }
@@ -75,14 +106,70 @@ kubectl -n "$NAMESPACE" exec statefulset/opensearch -- sh -ec 'curl -fsS http://
 
 age -r "$AGE_RECIPIENT" -o "$STAGING/runtime.env.age" "$RUNTIME_ENV"
 
+DEPLOYMENT_REPLICAS=$(mktemp "${TMPDIR:-/tmp}/signalchord-backup-replicas.XXXXXX")
+kubectl -n "$NAMESPACE" get deployments -l app.kubernetes.io/part-of=signalchord \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' > "$DEPLOYMENT_REPLICAS"
+FEED_COLLECTOR_SUSPEND=$(kubectl -n "$NAMESPACE" get cronjob signalchord-feed-collector -o jsonpath='{.spec.suspend}')
+[ -n "$FEED_COLLECTOR_SUSPEND" ] || FEED_COLLECTOR_SUSPEND=false
+APPLICATION_QUIESCED=true
+kubectl -n "$NAMESPACE" patch cronjob signalchord-feed-collector --type merge -p '{"spec":{"suspend":true}}' >/dev/null
+for job in $(kubectl -n "$NAMESPACE" get jobs -l app.kubernetes.io/name=feed-collector -o name); do
+  kubectl -n "$NAMESPACE" wait --for=condition=complete "$job" --timeout=10m >/dev/null
+ done
+kubectl -n "$NAMESPACE" scale deployments -l app.kubernetes.io/part-of=signalchord --replicas 0 >/dev/null
+while IFS=' ' read -r deployment _; do
+  [ -n "$deployment" ] || continue
+  kubectl -n "$NAMESPACE" rollout status "deployment/$deployment" --timeout=10m >/dev/null
+done < "$DEPLOYMENT_REPLICAS"
+
 # The variables below are expanded by the shell inside the PostgreSQL container.
 # shellcheck disable=SC2016
 kubectl -n "$NAMESPACE" exec statefulset/postgres -- sh -ec \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --compress=9 --no-owner --no-acl' \
   > "$STAGING/data/postgres.dump"
 
-kubectl -n "$NAMESPACE" exec statefulset/minio -- sh -ec 'tar -C /data -cf - .' \
-  > "$STAGING/data/minio.tar"
+postgres_image=$(kubectl -n "$NAMESPACE" get statefulset postgres -o jsonpath='{.spec.template.spec.containers[0].image}')
+MINIO_REPLICAS=$(kubectl -n "$NAMESPACE" get statefulset minio -o jsonpath='{.spec.replicas}')
+MINIO_POD="signalchord-minio-backup-$(date +%s)"
+kubectl -n "$NAMESPACE" scale statefulset/minio --replicas 0 >/dev/null
+kubectl -n "$NAMESPACE" rollout status statefulset/minio --timeout=10m >/dev/null
+cat <<EOF_POD | kubectl -n "$NAMESPACE" apply -f - >/dev/null
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $MINIO_POD
+  labels:
+    app.kubernetes.io/name: minio-backup
+    app.kubernetes.io/part-of: signalchord
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    fsGroup: 1000
+    seccompProfile: {type: RuntimeDefault}
+  containers:
+    - name: backup
+      image: $postgres_image
+      command: [sh, -c, 'sleep 3600']
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities: {drop: [ALL]}
+      volumeMounts:
+        - {name: data, mountPath: /data}
+  volumes:
+    - name: data
+      persistentVolumeClaim: {claimName: data-minio-0}
+EOF_POD
+kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$MINIO_POD" --timeout=5m >/dev/null
+kubectl -n "$NAMESPACE" exec "$MINIO_POD" -- tar -C /data -cf - . > "$STAGING/data/minio.tar"
+kubectl -n "$NAMESPACE" delete pod "$MINIO_POD" --wait=true >/dev/null
+MINIO_POD=
+kubectl -n "$NAMESPACE" scale statefulset/minio --replicas "$MINIO_REPLICAS" >/dev/null
+kubectl -n "$NAMESPACE" rollout status statefulset/minio --timeout=10m >/dev/null
+MINIO_REPLICAS=
 
 NEO4J_REPLICAS=$(kubectl -n "$NAMESPACE" get statefulset neo4j -o jsonpath='{.spec.replicas}')
 neo4j_image=$(kubectl -n "$NAMESPACE" get statefulset neo4j -o jsonpath='{.spec.template.spec.containers[0].image}')
@@ -124,7 +211,9 @@ spec:
 EOF_POD
 kubectl -n "$NAMESPACE" wait --for=condition=Ready "pod/$NEO4J_POD" --timeout=5m >/dev/null
 kubectl -n "$NAMESPACE" exec "$NEO4J_POD" -- neo4j-admin database dump neo4j --to-path=/backup --overwrite-destination=true
+kubectl -n "$NAMESPACE" exec "$NEO4J_POD" -- neo4j-admin database dump system --to-path=/backup --overwrite-destination=true
 kubectl -n "$NAMESPACE" exec "$NEO4J_POD" -- cat /backup/neo4j.dump > "$STAGING/data/neo4j.dump"
+kubectl -n "$NAMESPACE" exec "$NEO4J_POD" -- cat /backup/system.dump > "$STAGING/data/neo4j-system.dump"
 kubectl -n "$NAMESPACE" delete pod "$NEO4J_POD" --wait=true >/dev/null
 NEO4J_POD=
 kubectl -n "$NAMESPACE" scale statefulset/neo4j --replicas "$NEO4J_REPLICAS" >/dev/null
@@ -141,8 +230,9 @@ with open(path, "w", encoding="utf-8") as handle:
         "created_at": created_at,
         "kubernetes_context": context,
         "namespace": namespace,
-        "authoritative": ["postgresql", "neo4j", "minio", "runtime-config"],
+        "authoritative": ["postgresql", "neo4j", "neo4j-system", "minio", "runtime-config"],
         "rebuild_only": ["kafka", "opensearch", "valkey"],
+        "application_quiesced": True,
     }, handle, indent=2)
     handle.write("\n")
 PY
@@ -154,6 +244,10 @@ PY
   done > "$checksum_tmp"
   mv "$checksum_tmp" SHA256SUMS
 )
+
+restore_application
+rm -f "$DEPLOYMENT_REPLICAS"
+DEPLOYMENT_REPLICAS=
 mkdir -p "$(dirname "$OUTPUT")"
 mv "$STAGING" "$OUTPUT"
 STAGING=
