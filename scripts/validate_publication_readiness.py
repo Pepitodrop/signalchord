@@ -19,12 +19,20 @@ REQUIRED_FILES = (
     "SUPPORT.md",
     "CHANGELOG.md",
     "docs/publication-checklist.md",
+    "docs/repository-history-audit.md",
     "docs/community-self-hosting.md",
     "docs/single-server-kubernetes.md",
+    ".github/history-audit-denylist.sha256",
     ".github/ISSUE_TEMPLATE/bug_report.md",
     ".github/ISSUE_TEMPLATE/feature_request.md",
     ".github/ISSUE_TEMPLATE/config.yml",
     ".github/workflows/release.yml",
+    ".github/workflows/repository-history-audit.yml",
+    "scripts/audit_repository_history.py",
+    "scripts/test_audit_repository_history.py",
+    "scripts/single-server/backup.sh",
+    "scripts/single-server/restore.sh",
+    "scripts/single-server/acceptance.sh",
     "apps/mobile/app/index.tsx",
     "apps/mobile/lib/session.tsx",
 )
@@ -71,10 +79,35 @@ def validate(root: Path = ROOT) -> None:
         if marker.lower() not in publication.lower():
             failures.append(f"publication checklist must cover: {marker}")
 
+    history_audit = read(root, "docs/repository-history-audit.md")
+    for marker in ("complete Git history", "Gitleaks", "hashed", "private to public"):
+        if marker.lower() not in history_audit.lower():
+            failures.append(f"repository history audit guide must cover: {marker}")
+
+    history_workflow = read(root, ".github/workflows/repository-history-audit.yml")
+    for marker in ("fetch-depth: 0", "gitleaks git", "audit_repository_history.py", "upload-artifact"):
+        if marker not in history_workflow:
+            failures.append(f"history audit workflow must retain control: {marker}")
+
     single_server = read(root, "docs/single-server-kubernetes.md")
-    for marker in ("single-owner", "k3s", "backup", "rollback", "mobile"):
+    for marker in ("single-owner", "k3s", "backup.sh", "restore.sh", "acceptance.sh", "mobile"):
         if marker.lower() not in single_server.lower():
             failures.append(f"single-server Kubernetes guide must cover: {marker}")
+
+    backup = read(root, "scripts/single-server/backup.sh")
+    for marker in ("runtime.env.age", "pg_dump", "neo4j-admin database dump", "minio.tar", "SHA256SUMS"):
+        if marker not in backup:
+            failures.append(f"single-server backup must retain control: {marker}")
+
+    restore = read(root, "scripts/single-server/restore.sh")
+    for marker in ("sha256sum -c", "pg_restore", "neo4j-admin database load", "--yes"):
+        if marker not in restore:
+            failures.append(f"single-server restore must retain control: {marker}")
+
+    acceptance = read(root, "scripts/single-server/acceptance.sh")
+    for marker in ("signalchord-feed-collector", "/api/v1/sources", "/api/v1/watchlists", "/api/v1/alerts"):
+        if marker not in acceptance:
+            failures.append(f"single-server acceptance must retain control: {marker}")
 
     mobile_screen = read(root, "apps/mobile/app/index.tsx")
     forbidden_mobile_defaults = (
