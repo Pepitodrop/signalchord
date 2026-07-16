@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: valkey
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/part-of: signalchord
+spec:
+  selector:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/part-of: signalchord
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: valkey
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: valkey
+  labels:
+    app.kubernetes.io/name: valkey
+    app.kubernetes.io/part-of: signalchord
+spec:
+  serviceName: valkey
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: valkey
+      app.kubernetes.io/part-of: signalchord
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: valkey
+        app.kubernetes.io/part-of: signalchord
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: valkey
+          image: {{ .Values.images.valkey | quote }}
+          imagePullPolicy: IfNotPresent
+          args:
+            - valkey-server
+            - --appendonly
+            - "yes"
+          ports:
+            - name: valkey
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command: [valkey-cli, ping]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: valkey
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.resources.valkey | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if .Values.storageClassName }}
+        storageClassName: {{ .Values.storageClassName | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.valkey | quote }}
