@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import ssl
@@ -24,6 +25,7 @@ REQUIRED_NETWORK_POLICIES = {
     "signalchord-dns-and-dependencies",
     "signalchord-ingress-controller",
 }
+FETCH_ALLOWLIST_ENV = "FETCH_PRIVATE_HOST_ALLOWLIST"
 
 
 class AcceptanceError(RuntimeError):
@@ -55,6 +57,12 @@ class Runner:
         if not isinstance(value, dict):
             raise AcceptanceError("kubectl JSON result was not an object")
         return value
+
+
+@dataclass(frozen=True)
+class FetchAllowlistState:
+    deployment: str
+    previous_explicit_value: str | None
 
 
 def ensure(condition: bool, message: str) -> None:
@@ -191,6 +199,11 @@ def validate_https(host: str, insecure: bool) -> None:
 def fixture_resources(namespace: str, suffix: str, image: str) -> bytes:
     ensure("@sha256:" in image, "--fixture-image must use an immutable sha256 digest")
     name = f"signalchord-acceptance-{suffix}"
+    labels = {
+        "app": name,
+        "app.kubernetes.io/name": "acceptance-fixture",
+        "app.kubernetes.io/part-of": "signalchord",
+    }
     timestamp = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
     article_url = f"http://{name}.{namespace}.svc.cluster.local:8080/article-{suffix}.html"
     feed = f"""<?xml version=\"1.0\" encoding=\"UTF-8\"?>
@@ -209,18 +222,18 @@ def fixture_resources(namespace: str, suffix: str, image: str) -> bytes:
         {
             "apiVersion": "v1",
             "kind": "ConfigMap",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": namespace, "labels": labels},
             "data": {"feed.xml": feed, f"article-{suffix}.html": article},
         },
         {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": namespace, "labels": labels},
             "spec": {
                 "replicas": 1,
                 "selector": {"matchLabels": {"app": name}},
                 "template": {
-                    "metadata": {"labels": {"app": name}},
+                    "metadata": {"labels": labels},
                     "spec": {
                         "automountServiceAccountToken": False,
                         "securityContext": {
@@ -262,11 +275,119 @@ def fixture_resources(namespace: str, suffix: str, image: str) -> bytes:
         {
             "apiVersion": "v1",
             "kind": "Service",
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": {"name": name, "namespace": namespace, "labels": labels},
             "spec": {"selector": {"app": name}, "ports": [{"name": "http", "port": 8080, "targetPort": "http"}]},
         },
     ]
     return "\n---\n".join(json.dumps(resource, separators=(",", ":")) for resource in resources).encode("utf-8")
+
+
+def set_literal_env(container: dict[str, Any], values: dict[str, str]) -> None:
+    env = [entry for entry in container.get("env", []) if entry.get("name") not in values]
+    env.extend({"name": name, "value": value} for name, value in values.items())
+    container["env"] = env
+
+
+def canary_job_manifest(
+    cronjob: dict[str, Any],
+    *,
+    namespace: str,
+    name: str,
+    feed_url: str,
+    source_id: str,
+    tenant_id: str,
+    source_policy: dict[str, Any],
+) -> bytes:
+    try:
+        job_spec = copy.deepcopy(cronjob["spec"]["jobTemplate"]["spec"])
+        template = job_spec["template"]
+        containers = template["spec"]["containers"]
+    except (KeyError, TypeError) as exc:
+        raise AcceptanceError("feed collector CronJob has an unexpected structure") from exc
+    collector = next((container for container in containers if container.get("name") == "feed-collector"), None)
+    if collector is None:
+        raise AcceptanceError("feed collector CronJob has no feed-collector container")
+    labels = template.setdefault("metadata", {}).setdefault("labels", {})
+    labels["app.kubernetes.io/part-of"] = "signalchord"
+    labels["app.kubernetes.io/name"] = "feed-collector-acceptance"
+    set_literal_env(
+        collector,
+        {
+            "FEED_URL": feed_url,
+            "SOURCE_ID": source_id,
+            "SIGNALCHORD_TENANT_ID": tenant_id,
+            "SOURCE_POLICY_JSON": json.dumps(source_policy, separators=(",", ":")),
+            "FETCH_POLICY_ID": "synthetic-acceptance",
+        },
+    )
+    job_spec["backoffLimit"] = 0
+    manifest = {
+        "apiVersion": "batch/v1",
+        "kind": "Job",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+            "labels": {
+                "app.kubernetes.io/name": "feed-collector-acceptance",
+                "app.kubernetes.io/part-of": "signalchord",
+            },
+        },
+        "spec": job_spec,
+    }
+    return json.dumps(manifest, separators=(",", ":")).encode("utf-8")
+
+
+def configure_private_fetch_host(runner: Runner, host: str) -> FetchAllowlistState:
+    deployments = runner.json("get", "deployment").get("items", [])
+    for deployment in deployments:
+        deployment_name = str(deployment.get("metadata", {}).get("name", ""))
+        containers = deployment.get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+        collector = next((container for container in containers if container.get("name") == "document-fetcher"), None)
+        if collector is None:
+            continue
+        explicit = next((entry for entry in collector.get("env", []) if entry.get("name") == FETCH_ALLOWLIST_ENV), None)
+        if explicit and "valueFrom" in explicit:
+            raise AcceptanceError("document-fetcher uses a valueFrom private-host allowlist; configure the fixture host manually")
+        previous_explicit = str(explicit.get("value", "")) if explicit else None
+        effective_result = runner.kubectl(
+            "exec",
+            f"deployment/{deployment_name}",
+            "--container=document-fetcher",
+            "--",
+            "printenv",
+            FETCH_ALLOWLIST_ENV,
+            check=False,
+        )
+        effective = effective_result.stdout.decode("utf-8", errors="replace").strip() if effective_result.returncode == 0 else ""
+        values = [value.strip() for value in effective.split(",") if value.strip()]
+        if host not in values:
+            values.append(host)
+        runner.kubectl(
+            "set",
+            "env",
+            f"deployment/{deployment_name}",
+            "--containers=document-fetcher",
+            f"{FETCH_ALLOWLIST_ENV}={','.join(values)}",
+        )
+        runner.kubectl("rollout", "status", f"deployment/{deployment_name}", "--timeout=300s")
+        return FetchAllowlistState(deployment_name, previous_explicit)
+    raise AcceptanceError("no document-fetcher container was found")
+
+
+def restore_private_fetch_host(runner: Runner, state: FetchAllowlistState) -> None:
+    assignment = (
+        f"{FETCH_ALLOWLIST_ENV}={state.previous_explicit_value}"
+        if state.previous_explicit_value is not None
+        else f"{FETCH_ALLOWLIST_ENV}-"
+    )
+    runner.kubectl(
+        "set",
+        "env",
+        f"deployment/{state.deployment}",
+        "--containers=document-fetcher",
+        assignment,
+    )
+    runner.kubectl("rollout", "status", f"deployment/{state.deployment}", "--timeout=300s")
 
 
 def delete_api_resource(base_url: str, collection: str, identifier: str | None, token: str, insecure: bool) -> None:
@@ -286,11 +407,13 @@ def synthetic_canary(runner: Runner, host: str, image: str, insecure: bool, time
 
     suffix = uuid.uuid4().hex[:10]
     fixture_name = f"signalchord-acceptance-{suffix}"
+    fixture_host = f"{fixture_name}.{runner.namespace}.svc.cluster.local"
     job_name = fixture_name
     base_url = f"https://{host}"
     token = ""
     source_id: str | None = None
     watchlist_id: str | None = None
+    allowlist_state: FetchAllowlistState | None = None
     try:
         runner.run(["kubectl", "apply", "--filename", "-"], input_bytes=fixture_resources(runner.namespace, suffix, image))
         runner.kubectl("rollout", "status", f"deployment/{fixture_name}", "--timeout=180s")
@@ -301,13 +424,27 @@ def synthetic_canary(runner: Runner, host: str, image: str, insecure: bool, time
             insecure=insecure,
         )
         ensure(isinstance(session, dict) and session.get("access_token"), "session endpoint did not return an access token")
+        ensure(isinstance(session.get("organization"), dict) and session["organization"].get("id"), "session has no organization ID")
         token = str(session["access_token"])
+        tenant_id = str(session["organization"]["id"])
         policies = request_json("GET", f"{base_url}/api/v1/policies", token=token, insecure=insecure)
         ensure(isinstance(policies, list) and any(item.get("active") for item in policies), "no active alert policy exists")
         alerts = request_json("GET", f"{base_url}/api/v1/alerts", token=token, insecure=insecure)
         baseline = {str(item.get("id")) for item in alerts if item.get("id")} if isinstance(alerts, list) else set()
 
-        endpoint = f"http://{fixture_name}.{runner.namespace}.svc.cluster.local:8080/feed.xml"
+        policy_metadata = {
+            "owner": "signalchord-release-acceptance",
+            "legal_basis": "first_party_fixture",
+            "permitted_uses": ["synthetic_acceptance"],
+            "attribution": "Repository-owned synthetic fixture",
+            "terms_status": "first_party_fixture",
+            "geography": "synthetic-cluster",
+            "retention_days": 1,
+            "deletion_obligations": "disable source and remove fixture after acceptance",
+            "fixture": True,
+            "license": "repository-owned",
+        }
+        endpoint = f"http://{fixture_host}:8080/feed.xml"
         source = request_json(
             "POST",
             f"{base_url}/api/v1/sources",
@@ -322,16 +459,7 @@ def synthetic_canary(runner: Runner, host: str, image: str, insecure: bool, time
                     "enabled": True,
                     "requests_per_minute": 10,
                     "raw_retention_days": 1,
-                    "policy_metadata": {
-                        "owner": "signalchord-release-acceptance",
-                        "legal_basis": "first_party_fixture",
-                        "permitted_uses": ["synthetic_acceptance"],
-                        "attribution": "Repository-owned synthetic fixture",
-                        "terms_status": "first_party_fixture",
-                        "retention_days": 1,
-                        "fixture": True,
-                        "license": "repository-owned",
-                    },
+                    "policy_metadata": policy_metadata,
                 }
             },
         )
@@ -353,7 +481,32 @@ def synthetic_canary(runner: Runner, host: str, image: str, insecure: bool, time
         ensure(isinstance(watchlist, dict) and watchlist.get("id"), "watchlist creation did not return an ID")
         watchlist_id = str(watchlist["id"])
 
-        runner.kubectl("create", "job", "--from=cronjob/signalchord-feed-collector", job_name)
+        allowlist_state = configure_private_fetch_host(runner, fixture_host)
+        source_policy = {
+            "source_id": source_id,
+            "rights_status": "approved",
+            "owner": policy_metadata["owner"],
+            "legal_basis": policy_metadata["legal_basis"],
+            "permitted_uses": policy_metadata["permitted_uses"],
+            "attribution": policy_metadata["attribution"],
+            "terms_status": policy_metadata["terms_status"],
+            "geography": policy_metadata["geography"],
+            "retention_days": policy_metadata["retention_days"],
+            "deletion_obligations": policy_metadata["deletion_obligations"],
+        }
+        cronjob = runner.json("get", "cronjob", "signalchord-feed-collector")
+        runner.run(
+            ["kubectl", "apply", "--filename", "-"],
+            input_bytes=canary_job_manifest(
+                cronjob,
+                namespace=runner.namespace,
+                name=job_name,
+                feed_url=endpoint,
+                source_id=source_id,
+                tenant_id=tenant_id,
+                source_policy=source_policy,
+            ),
+        )
         runner.kubectl("wait", "--for=condition=complete", f"job/{job_name}", "--timeout=300s")
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -366,10 +519,15 @@ def synthetic_canary(runner: Runner, host: str, image: str, insecure: bool, time
             time.sleep(5)
         raise AcceptanceError(f"synthetic article-to-alert canary produced no new alert within {timeout} seconds")
     finally:
+        runner.kubectl("delete", "job", job_name, "--ignore-not-found", check=False)
+        if allowlist_state is not None:
+            try:
+                restore_private_fetch_host(runner, allowlist_state)
+            except AcceptanceError as exc:
+                print(f"cleanup warning: {exc}", file=sys.stderr)
         if token:
             delete_api_resource(base_url, "sources", source_id, token, insecure)
             delete_api_resource(base_url, "watchlists", watchlist_id, token, insecure)
-        runner.kubectl("delete", "job", job_name, "--ignore-not-found", check=False)
         runner.kubectl("delete", "service,deployment,configmap", fixture_name, "--ignore-not-found", check=False)
 
 
