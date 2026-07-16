@@ -1,0 +1,22 @@
+name: Publication Readiness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - name: Validate publication contract
+        run: python3 scripts/validate_publication_readiness.py
+      - name: Test publication validator
+        run: python3 scripts/test_validate_publication_readiness.py

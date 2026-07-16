@@ -1,0 +1,56 @@
+# Public repository publication checklist
+
+This checklist covers publishing SignalChord as a personal open-source project. It is deliberately narrower than operating a public multi-user SaaS service.
+
+## Repository content
+
+- [ ] `README.md` accurately describes implemented and incomplete features.
+- [ ] `LICENSE`, `NOTICE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md` and `CHANGELOG.md` are present.
+- [ ] Installation and mobile connection instructions are reproducible.
+- [ ] Only repository-owned or redistributable fixtures, screenshots, icons, fonts and datasets are committed.
+- [ ] No internship, employer, customer or other proprietary material is present.
+- [ ] Generated files, local state, backups and secrets are excluded by `.gitignore`.
+
+## Security and privacy
+
+- [ ] Gitleaks passes against the complete Git history.
+- [ ] No private key, token, password, cookie, production URL or personal data remains in current files or history.
+- [ ] Example credentials are clearly limited to local development and are never used by the Kubernetes deployment.
+- [ ] Security reporting through `SECURITY.md` is reachable before the repository becomes public.
+- [ ] Public fixtures contain synthetic data and do not identify private people.
+
+## Licensing
+
+- [ ] SignalChord-owned code remains Apache-2.0.
+- [ ] `NOTICE` lists separately licensed runtime components.
+- [ ] The community stack requires no paid API or commercial service.
+- [ ] Dependency and container-image licence reports have been reviewed for the release candidate.
+- [ ] Any AGPL/GPL services remain separate services and retain their notices.
+
+## Product and mobile surfaces
+
+- [ ] The responsive web interface works at phone, tablet and desktop widths.
+- [ ] The Expo mobile client accepts a self-hosted server URL and stores it securely.
+- [ ] Neither web nor mobile sign-in prefills development credentials in a release build.
+- [ ] Mobile builds, type checks and navigation tests pass.
+- [ ] Screenshots reflect the current UI and contain no real credentials or private data.
+
+## Automation and release
+
+- [ ] Required CI, security, community-stack, workflow-security, Helm and source-snapshot checks pass on the exact release commit.
+- [ ] The release workflow produces signed digest-addressed images, SBOMs, vulnerability reports, provenance, checksums and a release manifest.
+- [ ] `v1.0.0` release notes list supported deployment scope, known limitations and upgrade/rollback instructions.
+- [ ] `main` is protected and pull requests require successful checks.
+- [ ] Dependabot PRs are reviewed individually rather than merged only because they are automated.
+
+## GitHub publication settings
+
+The repository owner must complete these settings manually because they are account-level decisions:
+
+- [ ] Enable private vulnerability reporting.
+- [ ] Configure branch protection or a ruleset for `main`.
+- [ ] Confirm GitHub Actions and GHCR package visibility.
+- [ ] Add repository description, topics, social preview and homepage URL where applicable.
+- [ ] Change repository visibility from private to public only after all current-history checks pass.
+
+Publication approval means the source is ready to be public. It does not claim that an arbitrary internet deployment is secure or supported.
