@@ -32,6 +32,7 @@ REQUIRED_FILES = (
     "scripts/test_audit_repository_history.py",
     "scripts/single-server/backup.sh",
     "scripts/single-server/restore.sh",
+    "scripts/single-server/restore-v1.sh",
     "scripts/single-server/acceptance.sh",
     "apps/mobile/app/index.tsx",
     "apps/mobile/lib/session.tsx",
@@ -95,12 +96,31 @@ def validate(root: Path = ROOT) -> None:
             failures.append(f"single-server Kubernetes guide must cover: {marker}")
 
     backup = read(root, "scripts/single-server/backup.sh")
-    for marker in ("runtime.env.age", "pg_dump", "neo4j-admin database dump", "minio.tar", "SHA256SUMS"):
+    for marker in (
+        "runtime.env.age",
+        "pg_dump",
+        "neo4j-admin database dump neo4j",
+        "neo4j-admin database dump system",
+        "minio.tar",
+        "application_quiesced",
+        "SHA256SUMS",
+    ):
         if marker not in backup:
             failures.append(f"single-server backup must retain control: {marker}")
 
-    restore = read(root, "scripts/single-server/restore.sh")
-    for marker in ("sha256sum -c", "pg_restore", "neo4j-admin database load", "--yes"):
+    restore_entrypoint = read(root, "scripts/single-server/restore.sh")
+    if "restore-v1.sh" not in restore_entrypoint:
+        failures.append("single-server restore entrypoint must dispatch to restore-v1.sh")
+    restore = read(root, "scripts/single-server/restore-v1.sh")
+    for marker in (
+        "sha256sum -c",
+        "pg_restore",
+        "neo4j-admin database load system",
+        "neo4j-admin database load neo4j",
+        "neo4j-system.dump",
+        "application_quiesced",
+        "--yes",
+    ):
         if marker not in restore:
             failures.append(f"single-server restore must retain control: {marker}")
 
