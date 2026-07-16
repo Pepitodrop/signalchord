@@ -110,7 +110,7 @@ updates:
         self.write(
             root,
             ".github/workflows/release.yml",
-            "v*.*.* release-manifest.json cosign sign attest-build-provenance image-digests.txt\n",
+            "v*.*.* release-manifest.json cosign sign cosign attest cosign verify-attestation image-digests.txt\n",
         )
         self.write(
             root,
@@ -192,6 +192,17 @@ updates:
                 root,
                 ".github/workflows/release.yml",
                 "v*.*.* release-manifest.json cosign sign image-digests.txt\n",
+            )
+            self.assert_fails(root)
+
+    def test_plan_gated_github_attestation_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            path = root / ".github/workflows/release.yml"
+            path.write_text(
+                path.read_text(encoding="utf-8") + "attest-build-provenance\n",
+                encoding="utf-8",
             )
             self.assert_fails(root)
 
