@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "tag": "v1.0.0",
+  "scope": "public-source alpha and personal single-server Kubernetes reference",
+  "required_workflows": [
+    "CI",
+    "Publication Readiness",
+    "Source Snapshot",
+    "Workflow Security",
+    "Helm Digest Policy",
+    "Single Server k3s",
+    "Recovery Acceptance",
+    "History Audit"
+  ],
+  "operational_limitations": [
+    "A repository release does not prove a restore drill on the user's target server.",
+    "The one-node profile has no high availability.",
+    "Kafka, Neo4j, OpenSearch, Valkey, Prometheus and Grafana are not part of the automated authoritative restore.",
+    "Internal dependency transport in the personal one-node profile is not suitable for untrusted workloads or multiple operators."
+  ]
+}
