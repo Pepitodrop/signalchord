@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "allowed_binary_paths": [
+    {
+      "pattern": "velato/programs/*.mid",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Repository-owned deterministic Velato policy programs generated for SignalChord."
+    }
+  ],
+  "allowed_archive_paths": [],
+  "allowed_template_paths": [
+    {
+      "pattern": "**/.env.example",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Placeholder-only environment templates validated by repository policy."
+    },
+    {
+      "pattern": ".env.example",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Placeholder-only environment template validated by repository policy."
+    }
+  ]
+}
