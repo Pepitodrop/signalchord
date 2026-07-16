@@ -21,7 +21,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$REVISION" ] && [ -n "$HOST" ] || { usage; exit 2; }
+if [ -z "$REVISION" ] || [ -z "$HOST" ]; then
+  usage
+  exit 2
+fi
 case "$REVISION" in *[!0-9]*|'') echo "revision must be numeric" >&2; exit 2 ;; esac
 
 helm -n "$NAMESPACE" history signalchord
