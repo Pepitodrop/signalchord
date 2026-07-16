@@ -22,5 +22,61 @@
       "license": "Apache-2.0",
       "reason": "Placeholder-only environment template validated by repository policy."
     }
+  ],
+  "allowed_marker_paths": [
+    {
+      "pattern": "AGENTS.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Contributor policy describes material that must never be committed."
+    },
+    {
+      "pattern": "CODE_OF_CONDUCT.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Conduct policy describes information-protection expectations."
+    },
+    {
+      "pattern": "README.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Project documentation describes services that are not required."
+    },
+    {
+      "pattern": "SECURITY.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Security reporting policy discusses private handling."
+    },
+    {
+      "pattern": "docs/capacity-plan.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Capacity policy forbids restricted or unlicensed load-test inputs."
+    },
+    {
+      "pattern": "docs/community-self-hosting.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Self-hosting documentation describes commercial services that are not required."
+    },
+    {
+      "pattern": "docs/data-governance.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Governance policy defines data and rights classifications."
+    },
+    {
+      "pattern": "docs/publication-checklist.md",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "Publication policy names material that must not be published."
+    },
+    {
+      "pattern": "scripts/audit_repository_history.py",
+      "owner": "SignalChord project",
+      "license": "Apache-2.0",
+      "reason": "The scanner necessarily defines its detection markers."
+    }
   ]
 }
