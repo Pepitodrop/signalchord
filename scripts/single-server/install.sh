@@ -39,7 +39,7 @@ echo "Namespace: $NAMESPACE"
 echo "Host: $HOST"
 
 if [ -r /proc/sys/vm/max_map_count ]; then
-  vm_max_map_count=$(cat /proc/sys/vm/max_map_count)
+  IFS= read -r vm_max_map_count </proc/sys/vm/max_map_count
   if [ "$vm_max_map_count" -lt 262144 ]; then
     echo "vm.max_map_count must be at least 262144 for OpenSearch" >&2
     echo "Run: sudo sysctl -w vm.max_map_count=262144 and persist it in /etc/sysctl.d" >&2
