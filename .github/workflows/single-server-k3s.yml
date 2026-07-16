@@ -10,6 +10,8 @@ on:
       - 'scripts/single-server/**'
       - 'scripts/validate_single_server.py'
       - 'scripts/test_validate_single_server.py'
+      - 'scripts/validate_helm_policy.py'
+      - 'scripts/test_validate_helm_policy.py'
       - '.github/workflows/single-server-k3s.yml'
   pull_request:
     paths:
@@ -19,6 +21,8 @@ on:
       - 'scripts/single-server/**'
       - 'scripts/validate_single_server.py'
       - 'scripts/test_validate_single_server.py'
+      - 'scripts/validate_helm_policy.py'
+      - 'scripts/test_validate_helm_policy.py'
       - '.github/workflows/single-server-k3s.yml'
   workflow_dispatch:
 
@@ -48,6 +52,7 @@ jobs:
           set -o pipefail
           python3 scripts/validate_single_server.py 2>&1 | tee /tmp/single-server-diagnostics/repository-policy.log
           python3 scripts/test_validate_single_server.py 2>&1 | tee /tmp/single-server-diagnostics/repository-policy-tests.log
+          python3 scripts/test_validate_helm_policy.py 2>&1 | tee /tmp/single-server-diagnostics/helm-policy-tests.log
           python3 scripts/single-server/test_render_digest_values.py 2>&1 | tee /tmp/single-server-diagnostics/digest-values-tests.log
       - name: Lint and render community dependencies
         shell: bash
@@ -78,7 +83,7 @@ jobs:
             > /tmp/signalchord-application.yaml \
             2> /tmp/single-server-diagnostics/application-helm-template.err
           python3 scripts/validate_helm_policy.py \
-            /tmp/signalchord-application.yaml --environment staging \
+            /tmp/signalchord-application.yaml --environment single-server \
             2>&1 | tee /tmp/single-server-diagnostics/application-policy.log
       - name: Validate all manifests in a disposable cluster
         shell: bash
