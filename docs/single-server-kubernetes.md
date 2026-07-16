@@ -18,7 +18,7 @@ This topology prioritizes reproducibility and learning. It does not provide high
 
 ## Current repository support
 
-The repository now contains:
+The repository contains:
 
 - `infrastructure/kubernetes/helm/signalchord-community` for single-node community dependencies;
 - `infrastructure/kubernetes/helm/signalchord/values-single-server.yaml` for one-replica application workloads;
@@ -26,9 +26,11 @@ The repository now contains:
 - `scripts/single-server/install.sh` for idempotent installation;
 - `scripts/single-server/health.sh` for workload, storage and HTTPS verification;
 - `scripts/single-server/update.sh` and `rollback.sh` for immutable upgrades and Helm revision rollback;
-- a dedicated CI workflow that lints and renders both charts and validates them in a disposable cluster.
+- `scripts/single-server/backup_restore.py` for checksummed PostgreSQL and MinIO backup and destructive restore;
+- `scripts/single-server/acceptance.py` for cluster invariants and an optional synthetic article-to-alert canary;
+- dedicated CI workflows that enforce Helm policy, Restricted Pod Security admission, recovery tooling and full-history publication review.
 
-Backup and restore automation, a real-server acceptance canary and encrypted internal dependency transport remain required before the target server should be described as operational v1.
+Repository CI validates command behavior, manifests and admission policy. A real-server restore drill, reboot test, HTTPS/mobile login and synthetic canary still have to be executed on the target server before that installation is described as operational.
 
 ## Prerequisites
 
@@ -97,6 +99,62 @@ sh scripts/single-server/rollback.sh \
   --host signalchord.example.com
 ```
 
+## Backup and restore
+
+The supported automated backup contains the authoritative control-plane PostgreSQL database and the MinIO `raw-documents` bucket. It also records Helm values, cluster inventory, exact checksums and the current Git SHA. Kubernetes Secret values are never exported; keep the protected `runtime.env` separately in an encrypted backup.
+
+Use a reviewed MinIO client image pinned by digest:
+
+```bash
+python3 scripts/single-server/backup_restore.py backup \
+  --namespace signalchord \
+  --output /secure/backups/signalchord-$(date -u +%Y%m%dT%H%M%SZ) \
+  --minio-client-image 'minio/mc@sha256:<verified-digest>'
+```
+
+The backup command suspends the feed collector and scales application writers to zero for the maintenance window. It resumes their original state even when a backup command fails. The output directory and files are private by default.
+
+Restore is destructive and requires an explicit namespace confirmation:
+
+```bash
+python3 scripts/single-server/backup_restore.py restore \
+  --namespace signalchord \
+  --backup /secure/backups/signalchord-20260716T120000Z \
+  --minio-client-image 'minio/mc@sha256:<same-verified-digest>' \
+  --confirm-namespace signalchord \
+  --yes
+```
+
+The restore verifies every checksum before changing data, pauses application writers, restores PostgreSQL and mirrors the saved objects back into MinIO. Kafka, Neo4j, OpenSearch, Valkey, Prometheus and Grafana are deliberately listed as not restored. They are operational or derived stores and require the documented replay/rebuild work plus acceptance testing after a disaster recovery event.
+
+## Kubernetes acceptance
+
+Run the cluster contract after installation, update, reboot or restore:
+
+```bash
+python3 scripts/single-server/acceptance.py \
+  --namespace signalchord \
+  --host signalchord.example.com
+```
+
+This validates Restricted Pod Security enforcement, required StatefulSets and Deployments, bound storage, digest-pinned application images, non-exposed internal Services, TLS ingress and required NetworkPolicies.
+
+The optional article-to-alert canary uses credentials supplied only through environment variables. It creates a temporary repository-owned feed inside Kubernetes, creates temporary API resources, triggers the feed collector, waits for a new alert and removes the fixture:
+
+```bash
+export SIGNALCHORD_ACCEPTANCE_EMAIL='owner@example.com'
+export SIGNALCHORD_ACCEPTANCE_PASSWORD='<read-from-password-manager>'
+export SIGNALCHORD_ACCEPTANCE_ORGANIZATION='your-organization-slug'
+
+python3 scripts/single-server/acceptance.py \
+  --namespace signalchord \
+  --host signalchord.example.com \
+  --canary \
+  --fixture-image 'python@sha256:<verified-digest>'
+```
+
+Do not place acceptance credentials in command arguments, shell history or Git.
+
 ## Security boundary
 
 - Only ingress and SSH may be reachable from outside the server.
@@ -107,36 +165,23 @@ sh scripts/single-server/rollback.sh \
 - Trusted HTTPS is required for normal browser and mobile access.
 - Grafana and other administrative services are not exposed by the charts.
 
-The initial single-node dependency chart uses cluster-internal plaintext protocols and sets the application profile to `staging`, not `production`. This is acceptable only within the documented one-owner, one-node trust boundary. Encrypted Kafka, MinIO, Valkey, Neo4j and OpenSearch transport remains a v1 hardening task before exposing the cluster to untrusted workloads or operators.
-
-## Backup baseline
-
-The initial v1 backup contract is:
-
-- PostgreSQL logical dump;
-- Neo4j Community-compatible offline dump or volume backup;
-- MinIO bucket backup;
-- encrypted backup of configuration and secret material;
-- documented rebuild procedure for Kafka, OpenSearch and other derived projections;
-- retention of previous release digest values and Helm revision history.
-
-At least one restore and one immutable-digest rollback must succeed on the target server before the deployment is called operational.
+The initial single-node dependency chart uses cluster-internal plaintext protocols and sets the application profile to `staging`, not `production`. This is acceptable only within the documented one-owner, one-node trust boundary. Encrypted Kafka, MinIO, Valkey, Neo4j and OpenSearch transport remains required before exposing the cluster to untrusted workloads or operators.
 
 ## Mobile access
 
 The Expo client stores the chosen API base URL in the operating-system secure store. A public app-store release is not required. The operator may use Expo development builds, a locally built Android package, an iOS development build where available, or the responsive web interface on a phone. A trusted HTTPS certificate is required for normal native mobile access.
 
-## Minimum release evidence
+## Minimum operational evidence
 
-Before tagging `v1.0.0`, record:
+Before calling a target-server installation operational, record:
 
 - exact server OS, k3s, Helm and container-runtime versions;
 - machine CPU, RAM and storage;
 - immutable application image digests;
 - successful Helm installation and pod health;
 - successful login from desktop and phone;
-- successful permitted-feed article-to-alert canary;
+- successful repository-owned article-to-alert canary;
 - successful reboot recovery;
-- successful backup restore;
+- successful checksummed backup and destructive restore drill in an isolated maintenance window;
 - successful rollback to the preceding digest set;
-- known limitations, especially the lack of high availability and internal transport encryption.
+- known limitations, especially the lack of high availability, partial derived-store recovery and internal transport encryption.
