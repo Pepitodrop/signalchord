@@ -36,8 +36,33 @@ class PublicationReadinessValidatorTest(unittest.TestCase):
         )
         self.write(
             root,
+            "docs/repository-history-audit.md",
+            "Audit the complete Git history with Gitleaks and a hashed denylist before changing private to public.\n",
+        )
+        self.write(
+            root,
+            ".github/workflows/repository-history-audit.yml",
+            "fetch-depth: 0\ngitleaks git\naudit_repository_history.py\nactions/upload-artifact\n",
+        )
+        self.write(
+            root,
             "docs/single-server-kubernetes.md",
-            "A single-owner k3s server supports mobile access, backup and rollback.\n",
+            "A single-owner k3s server supports backup.sh, restore.sh, acceptance.sh and mobile access.\n",
+        )
+        self.write(
+            root,
+            "scripts/single-server/backup.sh",
+            "runtime.env.age pg_dump neo4j-admin database dump minio.tar SHA256SUMS\n",
+        )
+        self.write(
+            root,
+            "scripts/single-server/restore.sh",
+            "sha256sum -c pg_restore neo4j-admin database load --yes\n",
+        )
+        self.write(
+            root,
+            "scripts/single-server/acceptance.sh",
+            "signalchord-feed-collector /api/v1/sources /api/v1/watchlists /api/v1/alerts\n",
         )
         self.write(
             root,
@@ -72,6 +97,13 @@ class PublicationReadinessValidatorTest(unittest.TestCase):
             root = Path(tmp)
             self.fixture(root)
             (root / "CHANGELOG.md").unlink()
+            self.assert_fails(root)
+
+    def test_missing_history_audit_control_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            self.write(root, ".github/workflows/repository-history-audit.yml", "fetch-depth: 0\n")
             self.assert_fails(root)
 
     def test_prefilled_mobile_credentials_fail(self) -> None:
