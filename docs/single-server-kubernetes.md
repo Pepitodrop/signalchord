@@ -1,6 +1,6 @@
 # Single-server Kubernetes target
 
-SignalChord `v1.0.0` targets one owner operating one Linux server for learning and personal use. The intended deployment uses Docker/container images, k3s or another conformant lightweight Kubernetes distribution, and the repository Helm chart.
+SignalChord `v1.0.0` targets a single-owner deployment on one Linux server for learning and personal use. The intended deployment uses Docker/container images, k3s or another conformant lightweight Kubernetes distribution, and the repository Helm chart.
 
 A separate permanent staging server is not required. Pre-release validation may run in CI, a disposable local cluster and the target server before public network access is enabled.
 
