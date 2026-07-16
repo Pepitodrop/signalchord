@@ -13,11 +13,10 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
-import re
 import subprocess
 import sys
 from collections import defaultdict
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -54,11 +53,12 @@ KEY_MARKERS = (
     b"-----BEGIN EC " + b"PRIVATE KEY-----",
 )
 
-MARKER_DISCUSSION_PATHS = {
-    "docs/publication-checklist.md",
-    "docs/data-governance.md",
-    "SECURITY.md",
-}
+ALLOWLIST_SECTIONS = (
+    "allowed_binary_paths",
+    "allowed_archive_paths",
+    "allowed_template_paths",
+    "allowed_marker_paths",
+)
 
 
 @dataclass(frozen=True)
@@ -94,7 +94,7 @@ def load_allowlist(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if value.get("schema_version") != 1:
         raise ValueError("history audit allowlist schema_version must be 1")
-    for section in ("allowed_binary_paths", "allowed_archive_paths", "allowed_template_paths"):
+    for section in ALLOWLIST_SECTIONS:
         entries = value.get(section, [])
         if not isinstance(entries, list):
             raise ValueError(f"allowlist section {section} must be an array")
@@ -167,6 +167,7 @@ def audit_blob(record: BlobRecord, allowlist: dict[str, Any]) -> list[Finding]:
     binary_patterns = patterns(allowlist, "allowed_binary_paths")
     archive_patterns = patterns(allowlist, "allowed_archive_paths")
     template_patterns = patterns(allowlist, "allowed_template_paths")
+    marker_patterns = patterns(allowlist, "allowed_marker_paths")
 
     for path in record.paths:
         normalized = path.replace("\\", "/")
@@ -189,12 +190,12 @@ def audit_blob(record: BlobRecord, allowlist: dict[str, Any]) -> list[Finding]:
     if record.size <= MAX_TEXT_SCAN_BYTES:
         content = blob_content(record.object_id, MAX_TEXT_SCAN_BYTES)
         binary_content = is_binary(content)
+        upper_content = content.upper()
         for path in record.paths:
             normalized = path.replace("\\", "/")
             if any(marker in content for marker in KEY_MARKERS):
                 findings.append(Finding("critical", "key-material", record.object_id, normalized, "private-key material marker"))
-            if normalized not in MARKER_DISCUSSION_PATHS:
-                upper_content = content.upper()
+            if not matches_any(normalized, marker_patterns):
                 for marker in RESTRICTED_MARKERS:
                     if marker in upper_content:
                         findings.append(
@@ -242,8 +243,8 @@ def main() -> int:
             "scope": {
                 "secrets": "Gitleaks full-history scan plus key/path checks",
                 "ownership": "all reachable binary, archive, copied-tree, and large blobs require explicit approval",
-                "limitations": "Automated provenance review cannot replace a legal ownership determination."
-            }
+                "limitations": "Automated provenance review cannot replace a legal ownership determination.",
+            },
         }
         args.report.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         if findings:
