@@ -1,0 +1,46 @@
+name: Publication History Audit
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/audit_repository_history.py'
+      - '.github/publication-audit-allowlist.txt'
+      - '.github/workflows/publication-history-audit.yml'
+      - 'scripts/single-server/backup.sh'
+      - 'scripts/single-server/restore.sh'
+      - 'scripts/single-server/acceptance.sh'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=8.28.0
+          curl --fail --silent --show-error --location \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${version}/gitleaks_${version}_linux_x64.tar.gz" \
+            | tar -xz gitleaks
+          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
+      - name: Scan all reachable history for secrets
+        run: gitleaks git --redact --exit-code=1 .
+      - name: Audit historical proprietary and binary content
+        run: python3 scripts/audit_repository_history.py --report publication-history-audit.md
+      - name: Upload publication audit report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: publication-history-audit
+          path: publication-history-audit.md
+          if-no-files-found: warn
