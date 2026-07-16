@@ -1,0 +1,82 @@
+name: Recovery Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/single-server/backup_restore.py'
+      - 'scripts/single-server/test_backup_restore.py'
+      - 'scripts/single-server/acceptance.py'
+      - 'scripts/single-server/test_acceptance.py'
+      - 'docs/single-server-kubernetes.md'
+      - 'docs/runbooks/backup-restore.md'
+      - '.github/workflows/recovery-acceptance.yml'
+  pull_request:
+    paths:
+      - 'scripts/single-server/backup_restore.py'
+      - 'scripts/single-server/test_backup_restore.py'
+      - 'scripts/single-server/acceptance.py'
+      - 'scripts/single-server/test_acceptance.py'
+      - 'docs/single-server-kubernetes.md'
+      - 'docs/runbooks/backup-restore.md'
+      - '.github/workflows/recovery-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-acceptance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
+        with:
+          cluster_name: signalchord-recovery
+      - name: Compile and test recovery tooling
+        env:
+          PYTHONPATH: scripts/single-server
+        run: |
+          python3 -m compileall -q scripts/single-server/backup_restore.py scripts/single-server/acceptance.py
+          python3 scripts/single-server/test_backup_restore.py
+          python3 scripts/single-server/test_acceptance.py
+      - name: Render maintenance and canary resources
+        env:
+          PYTHONPATH: scripts/single-server
+        run: |
+          mkdir -p /tmp/recovery-acceptance
+          python3 - <<'PY'
+          from pathlib import Path
+          from backup_restore import maintenance_pod_manifest
+          from acceptance import fixture_resources
+
+          digest = 'sha256:' + 'a' * 64
+          Path('/tmp/recovery-acceptance/minio-maintenance.json').write_bytes(
+              maintenance_pod_manifest('signalchord', f'minio/mc@{digest}')
+          )
+          Path('/tmp/recovery-acceptance/synthetic-canary.yaml').write_bytes(
+              fixture_resources('signalchord', 'ci12345678', f'python@{digest}')
+          )
+          PY
+      - name: Enforce Restricted Pod Security admission
+        run: |
+          kubectl create namespace signalchord
+          kubectl label namespace signalchord \
+            pod-security.kubernetes.io/enforce=restricted \
+            pod-security.kubernetes.io/enforce-version=latest \
+            --overwrite
+          kubectl apply --server-side --dry-run=server -f /tmp/recovery-acceptance/minio-maintenance.json
+          kubectl apply --server-side --dry-run=server -f /tmp/recovery-acceptance/synthetic-canary.yaml
+      - name: Upload rendered recovery evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: recovery-acceptance-manifests
+          path: /tmp/recovery-acceptance/
+          if-no-files-found: warn
