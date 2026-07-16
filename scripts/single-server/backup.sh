@@ -45,7 +45,8 @@ kubectl -n "$NAMESPACE" get all,pvc,ingress,networkpolicy -o yaml >"$OUTPUT/kube
 
 postgres_pod=$(kubectl -n "$NAMESPACE" get pod -l app.kubernetes.io/name=postgres -o jsonpath='{.items[0].metadata.name}') || exit 1
 [ -n "$postgres_pod" ] || { echo "PostgreSQL pod not found" >&2; exit 1; }
-# shellcheck disable=SC2016 -- variables expand inside the remote pod shell, not locally.
+# Variables expand inside the remote pod shell, not locally.
+# shellcheck disable=SC2016
 kubectl -n "$NAMESPACE" exec "$postgres_pod" -- sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --clean --if-exists --no-owner --no-privileges -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip -9 >"$OUTPUT/postgres.sql.gz"
 
 for workload in kafka neo4j valkey minio opensearch prometheus grafana; do
