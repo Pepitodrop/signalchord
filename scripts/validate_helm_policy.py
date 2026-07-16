@@ -69,11 +69,11 @@ SINGLE_SERVER_REQUIRED_FRAGMENTS = [
     "name: API_RATE_LIMIT",
     "name: AUTH_RATE_LIMIT",
     "name: API_MAX_BODY_BYTES",
-    "KAFKA_BROKERS, value: kafka:9092",
-    "REDIS_URL, value: redis://valkey:6379/0",
-    "MINIO_ENDPOINT, value: minio:9000",
-    "OPENSEARCH_URL, value: http://opensearch:9200",
-    "NEO4J_URI, value: neo4j://neo4j:7687",
+    'KAFKA_BROKERS, value: "kafka:9092"',
+    'REDIS_URL, value: "redis://valkey:6379/0"',
+    'MINIO_ENDPOINT, value: "minio:9000"',
+    'OPENSEARCH_URL, value: "http://opensearch:9200"',
+    'NEO4J_URI, value: "neo4j://neo4j:7687"',
 ]
 
 
