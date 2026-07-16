@@ -6,15 +6,17 @@ This checklist covers publishing SignalChord as a personal open-source project. 
 
 - [ ] `README.md` accurately describes implemented and incomplete features.
 - [ ] `LICENSE`, `NOTICE`, `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SUPPORT.md` and `CHANGELOG.md` are present.
-- [ ] Installation and mobile connection instructions are reproducible.
+- [ ] Installation, backup, restore, Kubernetes acceptance and mobile connection instructions are reproducible.
 - [ ] Only repository-owned or redistributable fixtures, screenshots, icons, fonts and datasets are committed.
 - [ ] No internship, employer, customer or other proprietary material is present.
-- [ ] Generated files, local state, backups and secrets are excluded by `.gitignore`.
+- [ ] Generated files, local state, backups, age identities and secrets are excluded by `.gitignore`.
 
 ## Security and privacy
 
-- [ ] Gitleaks passes against the complete Git history.
-- [ ] No private key, token, password, cookie, production URL or personal data remains in current files or history.
+- [ ] `Repository History Audit` passes against the complete Git history on the exact release commit.
+- [ ] Gitleaks reports no private key, token, password, cookie or production credential in any reachable Git object.
+- [ ] The proprietary-content audit reports no blocked historical path, confidentiality marker or private hashed denylist term.
+- [ ] No production URL or personal data remains in current files or history.
 - [ ] Example credentials are clearly limited to local development and are never used by the Kubernetes deployment.
 - [ ] Security reporting through `SECURITY.md` is reachable before the repository becomes public.
 - [ ] Public fixtures contain synthetic data and do not identify private people.
@@ -27,17 +29,20 @@ This checklist covers publishing SignalChord as a personal open-source project. 
 - [ ] Dependency and container-image licence reports have been reviewed for the release candidate.
 - [ ] Any AGPL/GPL services remain separate services and retain their notices.
 
-## Product and mobile surfaces
+## Product, recovery and mobile surfaces
 
 - [ ] The responsive web interface works at phone, tablet and desktop widths.
 - [ ] The Expo mobile client accepts a self-hosted server URL and stores it securely.
 - [ ] Neither web nor mobile sign-in prefills development credentials in a release build.
 - [ ] Mobile builds, type checks and navigation tests pass.
 - [ ] Screenshots reflect the current UI and contain no real credentials or private data.
+- [ ] A backup completes with encrypted runtime configuration and valid SHA-256 checksums.
+- [ ] A destructive restore drill succeeds on a clean installation of the exact release digests.
+- [ ] Strong Kubernetes acceptance creates a new article-to-alert result after restore.
 
 ## Automation and release
 
-- [ ] Required CI, security, community-stack, workflow-security, Helm and source-snapshot checks pass on the exact release commit.
+- [ ] Required CI, security, community-stack, workflow-security, Helm, source-snapshot, repository-history and publication-readiness checks pass on the exact release commit.
 - [ ] The release workflow produces signed digest-addressed images, SBOMs, vulnerability reports, provenance, checksums and a release manifest.
 - [ ] `v1.0.0` release notes list supported deployment scope, known limitations and upgrade/rollback instructions.
 - [ ] `main` is protected and pull requests require successful checks.
