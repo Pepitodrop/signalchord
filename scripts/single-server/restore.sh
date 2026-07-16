@@ -33,6 +33,7 @@ done
 postgres_pod=$(kubectl -n "$NAMESPACE" get pod -l app.kubernetes.io/name=postgres -o jsonpath='{.items[0].metadata.name}') || exit 1
 [ -n "$postgres_pod" ] || { echo "PostgreSQL pod not found" >&2; exit 1; }
 
+# shellcheck disable=SC2016 -- variables expand inside the remote pod shell, not locally.
 gzip -dc "$BACKUP/postgres.sql.gz" | kubectl -n "$NAMESPACE" exec -i "$postgres_pod" -- sh -ec 'PGPASSWORD="$POSTGRES_PASSWORD" psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"'
 
 echo "PostgreSQL restore completed. Restore offline PVC snapshots separately, then run acceptance.sh."
