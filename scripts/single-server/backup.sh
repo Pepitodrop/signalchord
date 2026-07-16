@@ -75,6 +75,8 @@ kubectl -n "$NAMESPACE" exec statefulset/opensearch -- sh -ec 'curl -fsS http://
 
 age -r "$AGE_RECIPIENT" -o "$STAGING/runtime.env.age" "$RUNTIME_ENV"
 
+# The variables below are expanded by the shell inside the PostgreSQL container.
+# shellcheck disable=SC2016
 kubectl -n "$NAMESPACE" exec statefulset/postgres -- sh -ec \
   'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom --compress=9 --no-owner --no-acl' \
   > "$STAGING/data/postgres.dump"
@@ -146,9 +148,11 @@ with open(path, "w", encoding="utf-8") as handle:
 PY
 (
   cd "$STAGING"
+  checksum_tmp=$(mktemp "${TMPDIR:-/tmp}/signalchord-checksums.XXXXXX")
   find . -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while IFS= read -r file; do
     sha256sum "${file#./}"
-  done > SHA256SUMS
+  done > "$checksum_tmp"
+  mv "$checksum_tmp" SHA256SUMS
 )
 mkdir -p "$(dirname "$OUTPUT")"
 mv "$STAGING" "$OUTPUT"
