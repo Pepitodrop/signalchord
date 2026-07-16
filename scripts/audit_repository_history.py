@@ -13,6 +13,13 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 SKIP_PATHS = {".github/history-audit-denylist.sha256"}
+# These files necessarily contain the scanner's own detection strings and synthetic
+# regression credentials. Path rules still apply, and the same blob is scanned if it
+# is reachable under any other path.
+CONTENT_SCAN_EXCLUSIONS = {
+    "scripts/audit_repository_history.py",
+    "scripts/test_audit_repository_history.py",
+}
 SUSPICIOUS_PATH_RULES = {
     "environment file": re.compile(r"(^|/)\.env(?:\.|$)", re.IGNORECASE),
     "private key or certificate bundle": re.compile(r"\.(?:key|pem|p12|pfx|jks|kdbx)$", re.IGNORECASE),
@@ -96,19 +103,24 @@ def audit(repo: Path, denylist: Path) -> tuple[dict[str, int], list[Finding]]:
             blobs.setdefault(object_id, set()).add(path)
 
     for object_id, paths in blobs.items():
-        data = git(repo, "cat-file", "blob", object_id)
         for path in sorted(paths):
             for rule, pattern in SUSPICIOUS_PATH_RULES.items():
                 if pattern.search(path) and not path.endswith((".env.example", "runtime.env.example")):
                     findings.append(Finding("blob-path", object_id, path, rule))
+
+        scanned_paths = sorted(path for path in paths if path not in CONTENT_SCAN_EXCLUSIONS)
+        if not scanned_paths:
+            continue
+        data = git(repo, "cat-file", "blob", object_id)
+        representative_path = scanned_paths[0]
         for rule, pattern in SECRET_RULES.items():
             if pattern.search(data):
-                findings.append(Finding("blob-content", object_id, sorted(paths)[0], rule))
+                findings.append(Finding("blob-content", object_id, representative_path, rule))
         for rule, pattern in PROPRIETARY_PHRASES.items():
             if pattern.search(data):
-                findings.append(Finding("blob-content", object_id, sorted(paths)[0], rule))
+                findings.append(Finding("blob-content", object_id, representative_path, rule))
         if hashed_terms and contains_hashed_term(data, hashed_terms):
-            findings.append(Finding("blob-content", object_id, sorted(paths)[0], "private hashed denylist term"))
+            findings.append(Finding("blob-content", object_id, representative_path, "private hashed denylist term"))
 
     commits = git(repo, "rev-list", "--all").decode().splitlines()
     for commit in commits:
