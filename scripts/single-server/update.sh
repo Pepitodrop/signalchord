@@ -34,7 +34,7 @@ if helm -n "$NAMESPACE" status signalchord >/dev/null 2>&1; then
   echo "saved current release values for Helm revision $revision"
 fi
 
-scripts/single-server/install.sh \
+sh scripts/single-server/install.sh \
   --namespace "$NAMESPACE" \
   --host "$HOST" \
   --digests "$DIGESTS" \
