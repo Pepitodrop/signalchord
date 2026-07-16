@@ -52,12 +52,13 @@ class PublicationReadinessValidatorTest(unittest.TestCase):
         self.write(
             root,
             "scripts/single-server/backup.sh",
-            "runtime.env.age pg_dump neo4j-admin database dump minio.tar SHA256SUMS\n",
+            "runtime.env.age pg_dump neo4j-admin database dump neo4j neo4j-admin database dump system minio.tar application_quiesced SHA256SUMS\n",
         )
+        self.write(root, "scripts/single-server/restore.sh", "exec restore-v1.sh\n")
         self.write(
             root,
-            "scripts/single-server/restore.sh",
-            "sha256sum -c pg_restore neo4j-admin database load --yes\n",
+            "scripts/single-server/restore-v1.sh",
+            "sha256sum -c pg_restore neo4j-admin database load system neo4j-admin database load neo4j neo4j-system.dump application_quiesced --yes\n",
         )
         self.write(
             root,
@@ -104,6 +105,13 @@ class PublicationReadinessValidatorTest(unittest.TestCase):
             root = Path(tmp)
             self.fixture(root)
             self.write(root, ".github/workflows/repository-history-audit.yml", "fetch-depth: 0\n")
+            self.assert_fails(root)
+
+    def test_incomplete_restore_contract_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            self.write(root, "scripts/single-server/restore-v1.sh", "sha256sum -c pg_restore --yes\n")
             self.assert_fails(root)
 
     def test_prefilled_mobile_credentials_fail(self) -> None:
