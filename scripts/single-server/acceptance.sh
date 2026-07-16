@@ -26,7 +26,11 @@ for tool in kubectl helm curl; do
   command -v "$tool" >/dev/null 2>&1 || { echo "$tool is required" >&2; exit 1; }
 done
 
-sh scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST" $( [ "$INSECURE" = true ] && printf '%s' --insecure )
+if [ "$INSECURE" = true ]; then
+  sh scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST" --insecure
+else
+  sh scripts/single-server/health.sh --namespace "$NAMESPACE" --host "$HOST"
+fi
 
 helm -n "$NAMESPACE" status signalchord >/dev/null
 helm -n "$NAMESPACE" status signalchord-community >/dev/null
