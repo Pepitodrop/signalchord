@@ -23,7 +23,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$HOST" ] && [ -n "$DIGESTS" ] && [ -n "$RUNTIME_ENV" ] || { usage; exit 2; }
+if [ -z "$HOST" ] || [ -z "$DIGESTS" ] || [ -z "$RUNTIME_ENV" ]; then
+  usage
+  exit 2
+fi
 
 state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/signalchord
 mkdir -p "$state_dir"
