@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
+import {MerzatoStudio} from "./MerzatoStudio";
 import {
   buildVelatoPlaybackEvents,
   encodeVelatoMidi,
@@ -164,42 +165,45 @@ export function VelatoShowcase() {
   }, [stop]);
 
   return (
-    <article className="card velatoShowcase">
-      <div className="velatoShowcaseIntro">
-        <div>
-          <p className="eyebrow">Velato easter egg</p>
-          <h2>The policies are also playable scores.</h2>
-          <p className="muted">
-            Reveal the five functional programs and hear their actual instruction streams.
-          </p>
+    <>
+      <article className="card velatoShowcase">
+        <div className="velatoShowcaseIntro">
+          <div>
+            <p className="eyebrow">Velato easter egg</p>
+            <h2>The policies are also playable scores.</h2>
+            <p className="muted">
+              Reveal the five functional programs and hear their actual instruction streams.
+            </p>
+          </div>
+          <button
+            className="velatoReveal"
+            type="button"
+            aria-expanded={revealed}
+            onClick={() => {
+              if (revealed) stop();
+              setRevealed(value => !value);
+            }}
+          >
+            {revealed ? "Hide scores" : "♪ Reveal scores"}
+          </button>
         </div>
-        <button
-          className="velatoReveal"
-          type="button"
-          aria-expanded={revealed}
-          onClick={() => {
-            if (revealed) stop();
-            setRevealed(value => !value);
-          }}
-        >
-          {revealed ? "Hide scores" : "♪ Reveal scores"}
-        </button>
-      </div>
 
-      {audioError && <p className="error">{audioError}</p>}
+        {audioError && <p className="error">{audioError}</p>}
 
-      {revealed && (
-        <div className="velatoPrograms">
-          {VELATO_SHOWCASE_PROGRAMS.map(program => (
-            <ProgramCard
-              key={program.id}
-              program={program}
-              playing={playingId === program.id}
-              onToggle={programToPlay => void toggle(programToPlay)}
-            />
-          ))}
-        </div>
-      )}
-    </article>
+        {revealed && (
+          <div className="velatoPrograms">
+            {VELATO_SHOWCASE_PROGRAMS.map(program => (
+              <ProgramCard
+                key={program.id}
+                program={program}
+                playing={playingId === program.id}
+                onToggle={programToPlay => void toggle(programToPlay)}
+              />
+            ))}
+          </div>
+        )}
+      </article>
+      <MerzatoStudio/>
+    </>
   );
 }
