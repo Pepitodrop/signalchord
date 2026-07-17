@@ -48,7 +48,6 @@ jobs:
       contents: read
       packages: write
       id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@{PINNED_SHA}
   release:
@@ -160,8 +159,8 @@ jobs:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             content = self.valid_release_workflow().replace(
-                "      attestations: write",
-                "      attestations: write\n      actions: write",
+                "      id-token: write",
+                "      id-token: write\n      attestations: write",
                 1,
             )
             self.write_workflow(root, content, "release.yml")

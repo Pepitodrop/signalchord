@@ -28,6 +28,7 @@ REQUIRED_FILES = (
     ".github/ISSUE_TEMPLATE/bug_report.md",
     ".github/ISSUE_TEMPLATE/feature_request.md",
     ".github/ISSUE_TEMPLATE/config.yml",
+    ".github/releases/v1.0.0.md",
     ".github/workflows/release.yml",
     ".github/workflows/repository-history-audit.yml",
     "scripts/audit_repository_history.py",
@@ -185,16 +186,32 @@ def validate(root: Path = ROOT) -> None:
     if '?? "http://localhost:' in mobile_session or '|| "http://localhost:' in mobile_session:
         failures.append("mobile release code must not silently fall back to localhost")
 
+    release_notes = read(root, ".github/releases/v1.0.0.md")
+    for marker in ("Included", "Supported use", "Important limitations", "Install", "Upgrade and rollback", "Security"):
+        if marker not in release_notes:
+            failures.append(f"v1.0.0 release notes must cover: {marker}")
+
     release = read(root, ".github/workflows/release.yml")
     for marker in (
-        "v*.*.*",
+        "workflow_dispatch:",
+        ".github/releases/v1.0.0",
+        "Release tag:",
+        "Release commit:",
         "release-manifest.json",
         "cosign sign",
-        "attest-build-provenance",
+        "cosign attest",
+        "cosign verify-attestation",
+        "provenance-${{ matrix.name }}.json",
         "image-digests.txt",
+        "body_path: .github/releases/v1.0.0.md",
     ):
         if marker not in release:
             failures.append(f"release workflow must retain publication artifact/control: {marker}")
+    for forbidden in ("attest-build-provenance", "attestations: write"):
+        if forbidden in release:
+            failures.append(f"release workflow contains unsupported release control: {forbidden}")
+    if any(line == "    tags:" for line in release.splitlines()):
+        failures.append("release workflow must not use a tag push trigger that duplicates marker publication")
 
     issue_config = read(root, ".github/ISSUE_TEMPLATE/config.yml")
     if "security/advisories/new" not in issue_config or "blank_issues_enabled: false" not in issue_config:

@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*.*.*'
     paths:
       - .github/releases/v1.0.0
   workflow_dispatch:
@@ -43,26 +41,40 @@ jobs:
         shell: bash
         env:
           REQUESTED_TAG: ${{ inputs.release_tag }}
-          BOOTSTRAP_TAG: v1.0.0
-          BOOTSTRAP_SHA: a8f8732995315bd4607cce167b9aa2418110a5e2
+          BOOTSTRAP_MARKER: .github/releases/v1.0.0
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
           tagged_sha=""
 
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${GITHUB_REF_NAME}" != "main" ]; then
+              echo "Manual release publication must run from main" >&2
+              exit 1
+            fi
             tag="${REQUESTED_TAG}"
           elif [ "${GITHUB_REF_TYPE}" = "branch" ]; then
             if [ "${GITHUB_REF_NAME}" != "main" ]; then
               echo "Release bootstrap is restricted to main" >&2
               exit 1
             fi
-            tag="${BOOTSTRAP_TAG}"
-            tagged_sha="${BOOTSTRAP_SHA}"
+
+            mapfile -t marker_tags < <(sed -n 's/^Release tag: //p' "${BOOTSTRAP_MARKER}")
+            mapfile -t marker_shas < <(sed -n 's/^Release commit: //p' "${BOOTSTRAP_MARKER}")
+            if [ "${#marker_tags[@]}" -ne 1 ] || [ "${#marker_shas[@]}" -ne 1 ]; then
+              echo "Release marker must contain exactly one Release tag and Release commit" >&2
+              exit 1
+            fi
+            tag="${marker_tags[0]}"
+            tagged_sha="${marker_shas[0]}"
           fi
 
           if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Release tag must be vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          if [ -n "$tagged_sha" ] && [[ ! "$tagged_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Release commit must be a full lowercase Git SHA" >&2
             exit 1
           fi
 
@@ -86,6 +98,8 @@ jobs:
           test -f pnpm-lock.yaml
           test -f apps/control-plane/Gemfile.lock
           test -f services/go.sum
+          test -f .github/releases/v1.0.0.md
+          grep -q "cosign attest" .github/workflows/release.yml
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "sha=$tagged_sha" >> "$GITHUB_OUTPUT"
       - name: Verify frozen dependency metadata
@@ -125,7 +139,6 @@ jobs:
       contents: read
       packages: write
       id-token: write
-      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -200,22 +213,84 @@ jobs:
         env:
           IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
           DIGEST: ${{ steps.build.outputs.digest }}
-          CERT_IDENTITY_RE: https://github.com/Pepitodrop/signalchord/.github/workflows/release.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)
+          CERT_IDENTITY_RE: https://github.com/Pepitodrop/signalchord/.github/workflows/release.yml@refs/heads/main
         run: >-
           cosign verify
           --certificate-oidc-issuer https://token.actions.githubusercontent.com
           --certificate-identity-regexp "$CERT_IDENTITY_RE"
           "$IMAGE@$DIGEST" > "cosign-verify-${{ matrix.name }}.txt"
-      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        with:
-          subject-name: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
-          subject-digest: ${{ steps.build.outputs.digest }}
-          push-to-registry: true
+      - name: Generate SLSA provenance predicate
+        shell: bash
+        env:
+          SERVICE_NAME: ${{ matrix.name }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          RELEASE_TAG: ${{ needs.verify.outputs.tag }}
+          RELEASE_SHA: ${{ needs.verify.outputs.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          release_sha = os.environ["RELEASE_SHA"]
+          service = os.environ["SERVICE_NAME"]
+          predicate = {
+              "builder": {
+                  "id": f"https://github.com/{repository}/.github/workflows/release.yml@refs/heads/main"
+              },
+              "buildType": "https://github.com/Attestations/GitHubActionsWorkflow@v1",
+              "invocation": {
+                  "configSource": {
+                      "uri": f"git+https://github.com/{repository}@{release_sha}",
+                      "digest": {"sha1": release_sha},
+                      "entryPoint": os.environ["DOCKERFILE"],
+                  },
+                  "parameters": {
+                      "service": service,
+                      "image": os.environ["IMAGE"],
+                      "releaseTag": os.environ["RELEASE_TAG"],
+                  },
+                  "environment": {
+                      "githubRunId": os.environ["GITHUB_RUN_ID"],
+                      "githubRunAttempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  },
+              },
+              "metadata": {
+                  "buildInvocationId": (
+                      f"https://github.com/{repository}/actions/runs/"
+                      f"{os.environ['GITHUB_RUN_ID']}/attempts/{os.environ['GITHUB_RUN_ATTEMPT']}"
+                  ),
+                  "buildFinishedOn": datetime.now(timezone.utc).isoformat(),
+                  "reproducible": False,
+              },
+              "materials": [
+                  {
+                      "uri": f"git+https://github.com/{repository}",
+                      "digest": {"sha1": release_sha},
+                  }
+              ],
+          }
+          with open(f"provenance-{service}.json", "w", encoding="utf-8") as handle:
+              json.dump(predicate, handle, indent=2, sort_keys=True)
+              handle.write("\n")
+          PY
+      - name: Sign SLSA provenance attestation
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: >-
+          cosign attest --yes
+          --type slsaprovenance
+          --predicate "provenance-${{ matrix.name }}.json"
+          "$IMAGE@$DIGEST"
       - name: Verify provenance attestation
         env:
           IMAGE: ${{ env.IMAGE_PREFIX }}-${{ matrix.name }}
           DIGEST: ${{ steps.build.outputs.digest }}
-          CERT_IDENTITY_RE: https://github.com/Pepitodrop/signalchord/.github/workflows/release.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/main)
+          CERT_IDENTITY_RE: https://github.com/Pepitodrop/signalchord/.github/workflows/release.yml@refs/heads/main
         run: >-
           cosign verify-attestation
           --type slsaprovenance
@@ -241,6 +316,7 @@ jobs:
           path: |
             sbom-image-${{ matrix.name }}.spdx.json
             trivy-image-${{ matrix.name }}.txt
+            provenance-${{ matrix.name }}.json
             cosign-verify-${{ matrix.name }}.txt
             cosign-attestation-${{ matrix.name }}.txt
           if-no-files-found: warn
@@ -307,6 +383,7 @@ jobs:
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ needs.verify.outputs.tag }}
+          body_path: .github/releases/v1.0.0.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |

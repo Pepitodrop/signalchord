@@ -114,8 +114,24 @@ updates:
         )
         self.write(
             root,
+            ".github/releases/v1.0.0.md",
+            "# Release\nIncluded\nSupported use\nImportant limitations\nInstall\nUpgrade and rollback\nSecurity\n",
+        )
+        self.write(
+            root,
             ".github/workflows/release.yml",
-            "v*.*.* release-manifest.json cosign sign attest-build-provenance image-digests.txt\n",
+            """workflow_dispatch:
+.github/releases/v1.0.0
+Release tag:
+Release commit:
+release-manifest.json
+cosign sign
+cosign attest
+cosign verify-attestation
+provenance-${{ matrix.name }}.json
+image-digests.txt
+body_path: .github/releases/v1.0.0.md
+""",
         )
         self.write(
             root,
@@ -207,15 +223,43 @@ updates:
             )
             self.assert_fails(root)
 
-    def test_release_missing_provenance_fails(self) -> None:
+    def test_release_missing_private_provenance_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.fixture(root)
-            self.write(
-                root,
-                ".github/workflows/release.yml",
-                "v*.*.* release-manifest.json cosign sign image-digests.txt\n",
-            )
+            path = root / ".github/workflows/release.yml"
+            self.write(root, ".github/workflows/release.yml", path.read_text(encoding="utf-8").replace("cosign attest\n", ""))
+            self.assert_fails(root)
+
+    def test_enterprise_only_attestation_action_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            path = root / ".github/workflows/release.yml"
+            self.write(root, ".github/workflows/release.yml", path.read_text(encoding="utf-8") + "attest-build-provenance\n")
+            self.assert_fails(root)
+
+    def test_attestations_write_permission_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            path = root / ".github/workflows/release.yml"
+            self.write(root, ".github/workflows/release.yml", path.read_text(encoding="utf-8") + "attestations: write\n")
+            self.assert_fails(root)
+
+    def test_duplicate_tag_trigger_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            path = root / ".github/workflows/release.yml"
+            self.write(root, ".github/workflows/release.yml", path.read_text(encoding="utf-8") + "    tags:\n")
+            self.assert_fails(root)
+
+    def test_incomplete_release_notes_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            self.write(root, ".github/releases/v1.0.0.md", "# Release\nIncluded\n")
             self.assert_fails(root)
 
 
