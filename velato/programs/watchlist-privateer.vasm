@@ -1,0 +1,88 @@
+# Watchlist Privateer
+#
+# Original cinematic seafaring action pulse. It uses only broad genre traits;
+# no existing melody is reproduced.
+#
+# Operational function:
+# - escalate fast-moving watchlist stories with corroboration;
+# - discount contradiction pressure from the score;
+# - route urgent watchlist items to routing code 7;
+# - suppress low-trust or heavily contradicted material.
+
+LOAD_INPUT watchlist_match
+PUSH_CONST 35
+MUL
+
+LOAD_INPUT recency
+PUSH_CONST 20
+MUL
+ADD
+
+LOAD_INPUT corroboration_count
+PUSH_CONST 3
+MIN
+PUSH_CONST 3
+DIV
+PUSH_CONST 25
+MUL
+ADD
+
+LOAD_INPUT source_trust
+PUSH_CONST 20
+MUL
+ADD
+
+LOAD_INPUT contradiction_count
+PUSH_CONST 3
+MIN
+PUSH_CONST 3
+DIV
+PUSH_CONST 20
+MUL
+SUB
+
+PUSH_CONST 0
+PUSH_CONST 100
+CLAMP
+DUP
+STORE_LOCAL 0
+STORE_SCORE
+
+PUSH_CONST 1
+LOAD_LOCAL 0
+PUSH_CONST 40
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 65
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 85
+GTE
+ADD
+STORE_SEVERITY
+
+LOAD_LOCAL 0
+PUSH_CONST 65
+GTE
+LOAD_INPUT watchlist_match
+PUSH_CONST 1
+GTE
+AND
+PUSH_CONST 7
+PUSH_CONST 1
+SELECT
+STORE_ROUTE
+
+LOAD_INPUT source_trust
+PUSH_CONST 100
+MUL
+PUSH_CONST 30
+LT
+LOAD_INPUT contradiction_count
+PUSH_CONST 3
+GT
+OR
+STORE_SUPPRESS
+HALT
