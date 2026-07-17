@@ -1,0 +1,74 @@
+# Contradiction Canon
+#
+# An original canon-like contour built from repeated comparison figures.
+#
+# Operational function:
+# - detect contradiction-heavy stories with investigation value;
+# - combine contradiction pressure with novelty, watchlist and diversity signals;
+# - route material with at least two contradictions to routing code 5;
+# - suppress unsupported low-trust noise.
+
+LOAD_INPUT contradiction_count
+PUSH_CONST 4
+MIN
+PUSH_CONST 4
+DIV
+PUSH_CONST 45
+MUL
+
+LOAD_INPUT novelty
+PUSH_CONST 15
+MUL
+ADD
+
+LOAD_INPUT watchlist_match
+PUSH_CONST 20
+MUL
+ADD
+
+LOAD_INPUT source_diversity
+PUSH_CONST 20
+MUL
+ADD
+
+PUSH_CONST 0
+PUSH_CONST 100
+CLAMP
+DUP
+STORE_LOCAL 0
+STORE_SCORE
+
+PUSH_CONST 1
+LOAD_LOCAL 0
+PUSH_CONST 35
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 60
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 80
+GTE
+ADD
+STORE_SEVERITY
+
+LOAD_INPUT contradiction_count
+PUSH_CONST 2
+GTE
+PUSH_CONST 5
+PUSH_CONST 1
+SELECT
+STORE_ROUTE
+
+LOAD_INPUT source_trust
+PUSH_CONST 100
+MUL
+PUSH_CONST 20
+LT
+LOAD_INPUT corroboration_count
+PUSH_CONST 1
+LT
+AND
+STORE_SUPPRESS
+HALT
