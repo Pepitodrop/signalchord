@@ -27,9 +27,9 @@ function storedSession(): SessionResponse | null {
 
 function Login({onSession}: {onSession: (value: SessionResponse) => void}) {
   const client = useMemo(() => new SignalChordClient(API_URL), []);
-  const [email, setEmail] = useState("analyst@signalchord.local");
-  const [password, setPassword] = useState("signalchord-demo-password");
-  const [organization, setOrganization] = useState("demo");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [organization, setOrganization] = useState("");
   const [error, setError] = useState("");
 
   const submit = async (event: React.FormEvent) => {
@@ -51,9 +51,38 @@ function Login({onSession}: {onSession: (value: SessionResponse) => void}) {
         <p className="eyebrow">SignalChord v1.0</p>
         <h1>Connected news intelligence.</h1>
         <p className="muted">Evidence-first monitoring for analysts.</p>
-        <label>Email<input value={email} onChange={event => setEmail(event.target.value)} type="email"/></label>
-        <label>Password<input value={password} onChange={event => setPassword(event.target.value)} type="password"/></label>
-        <label>Organization<input value={organization} onChange={event => setOrganization(event.target.value)}/></label>
+        <label>
+          Email
+          <input
+            value={email}
+            onChange={event => setEmail(event.target.value)}
+            type="email"
+            autoComplete="username"
+            placeholder="analyst@signalchord.local"
+            required
+          />
+        </label>
+        <label>
+          Password
+          <input
+            value={password}
+            onChange={event => setPassword(event.target.value)}
+            type="password"
+            autoComplete="current-password"
+            placeholder="Local development password"
+            required
+          />
+        </label>
+        <label>
+          Organization
+          <input
+            value={organization}
+            onChange={event => setOrganization(event.target.value)}
+            autoComplete="organization"
+            placeholder="demo"
+            required
+          />
+        </label>
         {error && <p className="error">{error}</p>}
         <button className="primary">Sign in</button>
       </form>
