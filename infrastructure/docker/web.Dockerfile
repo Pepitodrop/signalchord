@@ -14,8 +14,9 @@ COPY velato ./velato
 COPY apps/web ./apps/web
 RUN pnpm --filter @signalchord/web build
 
-FROM nginx:1.28.0-alpine@sha256:30f1c0d78e0ad60901648be663a710bdadf19e4c10ac6782c235200619158284
-RUN mkdir -p /tmp/client_temp /tmp/proxy_temp_path /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp \
+FROM nginx:1.30.3-alpine3.23@sha256:0d3b80406a13a767339fbe2f41406d6c7da727ab89cf8fae399e81f780f814d1
+RUN apk upgrade --no-cache \
+ && mkdir -p /tmp/client_temp /tmp/proxy_temp_path /tmp/fastcgi_temp /tmp/uwsgi_temp /tmp/scgi_temp \
  && sed -i '/^pid[[:space:]]/d' /etc/nginx/nginx.conf \
  && sed -i '1ipid /tmp/nginx.pid;' /etc/nginx/nginx.conf \
  && sed -i '/^user  nginx;/d' /etc/nginx/nginx.conf \
