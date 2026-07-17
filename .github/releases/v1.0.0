@@ -1,5 +1,6 @@
 SignalChord v1.0.0
 
-Release commit: a8f8732995315bd4607cce167b9aa2418110a5e2
+Release tag: v1.0.0
+Release commit: 4c5063c9fc02a9727dda32f928c61d43ad71884e
 
-Merging this marker triggers the audited release workflow. The workflow verifies the exact commit, builds and scans immutable images, creates the annotated tag only if absent, and publishes the GitHub release artifacts.
+Merging this marker triggers the audited release workflow. The workflow verifies the exact commit, builds and scans immutable images, signs image digests and SLSA provenance, creates the annotated tag only if absent, and publishes the GitHub release artifacts.
