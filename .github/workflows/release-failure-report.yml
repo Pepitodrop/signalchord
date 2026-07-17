@@ -1,0 +1,83 @@
+name: Release Failure Report
+
+on:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  report:
+    if: ${{ github.event.workflow_run.conclusion != 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish actionable release failure
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const run = context.payload.workflow_run;
+            const jobs = await github.paginate(
+              github.rest.actions.listJobsForWorkflowRun,
+              { owner, repo, run_id: run.id, per_page: 100 }
+            );
+
+            const failedJobs = jobs.filter((job) =>
+              ['failure', 'cancelled', 'timed_out', 'action_required', 'startup_failure'].includes(job.conclusion)
+            );
+
+            const lines = failedJobs.length
+              ? failedJobs.flatMap((job) => {
+                  const failedSteps = (job.steps || [])
+                    .filter((step) => step.conclusion && step.conclusion !== 'success' && step.conclusion !== 'skipped')
+                    .map((step) => `  - Step ${step.number}: ${step.name} — ${step.conclusion}`);
+                  return [
+                    `- **${job.name}** — ${job.conclusion}`,
+                    `  - ${job.html_url}`,
+                    ...(failedSteps.length ? failedSteps : ['  - No failed step metadata was returned by GitHub.']),
+                  ];
+                })
+              : ['- GitHub returned no failed job metadata; inspect the workflow run directly.'];
+
+            const title = '[release] v1.0.0 workflow failed';
+            const body = [
+              'The fail-closed SignalChord release workflow did not publish `v1.0.0`.',
+              '',
+              `- Workflow conclusion: **${run.conclusion}**`,
+              `- Event: \`${run.event}\``,
+              `- Head branch: \`${run.head_branch}\``,
+              `- Head SHA: \`${run.head_sha}\``,
+              `- Attempt: ${run.run_attempt}`,
+              `- Run: ${run.html_url}`,
+              '',
+              '## Failed jobs and steps',
+              '',
+              ...lines,
+              '',
+              'The release tag is intentionally withheld until every image build, scan, signature and provenance verification succeeds.',
+            ].join('\n');
+
+            const existing = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: 'all', per_page: 100 }
+            );
+            const issue = existing.find((item) => !item.pull_request && item.title === title);
+
+            if (issue) {
+              await github.rest.issues.update({
+                owner,
+                repo,
+                issue_number: issue.number,
+                body,
+                state: 'open',
+              });
+            } else {
+              await github.rest.issues.create({ owner, repo, title, body });
+            }
