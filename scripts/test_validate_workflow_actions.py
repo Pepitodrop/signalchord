@@ -57,6 +57,18 @@ jobs:
       - uses: actions/checkout@{PINNED_SHA}
 """
 
+    def valid_release_failure_report_workflow(self) -> str:
+        return f"""name: Release Failure Report
+permissions:
+  actions: read
+  contents: read
+  issues: write
+jobs:
+  report:
+    steps:
+      - uses: actions/github-script@{PINNED_SHA}
+"""
+
     def assert_validation_fails(self, root: Path) -> None:
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             validate_workflow_actions.validate(root)
@@ -164,6 +176,38 @@ jobs:
                 1,
             )
             self.write_workflow(root, content, "release.yml")
+            self.assert_validation_fails(root)
+
+    def test_release_failure_report_permission_boundaries_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_workflow(
+                root,
+                self.valid_release_failure_report_workflow(),
+                "release-failure-report.yml",
+            )
+            validate_workflow_actions.validate(root)
+
+    def test_release_failure_report_extra_write_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            content = self.valid_release_failure_report_workflow().replace(
+                "  issues: write",
+                "  issues: write\n  packages: write",
+                1,
+            )
+            self.write_workflow(root, content, "release-failure-report.yml")
+            self.assert_validation_fails(root)
+
+    def test_release_failure_report_job_write_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            content = self.valid_release_failure_report_workflow().replace(
+                "  report:\n    steps:",
+                "  report:\n    permissions:\n      contents: write\n    steps:",
+                1,
+            )
+            self.write_workflow(root, content, "release-failure-report.yml")
             self.assert_validation_fails(root)
 
     def test_smoke_retry_helper_success_and_timeout_paths(self) -> None:
