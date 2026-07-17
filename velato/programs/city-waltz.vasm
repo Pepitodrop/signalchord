@@ -1,0 +1,80 @@
+# City Waltz
+#
+# Original modern German indie-pop waltz pulse, organized in recurring
+# three-instruction scoring cells. It uses broad stylistic characteristics only;
+# no existing melody is reproduced.
+#
+# Operational function:
+# - prioritize geographically relevant, diverse and trustworthy stories;
+# - route strong local-impact items to routing code 4;
+# - suppress weakly sourced or insufficiently diverse material.
+
+LOAD_INPUT geographic_relevance
+PUSH_CONST 30
+MUL
+
+LOAD_INPUT entity_relevance
+PUSH_CONST 25
+MUL
+ADD
+
+LOAD_INPUT source_diversity
+PUSH_CONST 20
+MUL
+ADD
+
+LOAD_INPUT source_trust
+PUSH_CONST 15
+MUL
+ADD
+
+LOAD_INPUT recency
+PUSH_CONST 10
+MUL
+ADD
+
+PUSH_CONST 0
+PUSH_CONST 100
+CLAMP
+DUP
+STORE_LOCAL 0
+STORE_SCORE
+
+PUSH_CONST 1
+LOAD_LOCAL 0
+PUSH_CONST 35
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 60
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 80
+GTE
+ADD
+STORE_SEVERITY
+
+LOAD_INPUT geographic_relevance
+PUSH_CONST 100
+MUL
+PUSH_CONST 60
+GTE
+PUSH_CONST 4
+PUSH_CONST 1
+SELECT
+STORE_ROUTE
+
+LOAD_INPUT source_trust
+PUSH_CONST 100
+MUL
+PUSH_CONST 35
+LT
+LOAD_INPUT source_diversity
+PUSH_CONST 100
+MUL
+PUSH_CONST 20
+LT
+OR
+STORE_SUPPRESS
+HALT
