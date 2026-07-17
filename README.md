@@ -18,7 +18,7 @@ The reference article-to-alert flow includes:
 6. OpenSearch projection, graph query and analytics APIs.
 7. Rails identity, tenancy, RBAC, sources, watchlists, alerts and audit APIs.
 8. Deterministic Velato-compatible policy evaluation.
-9. A browser-local [Merzato](https://github.com/Pepitodrop/merzato-lang) Policy Studio with bounded Assembly execution and executable Piet/SVG artwork compilation.
+9. A browser-local [Merzato](https://github.com/Pepitodrop/merzato-lang) Policy Studio with five bounded features: Assembly execution, executable Piet/SVG artwork compilation, alert triage scoring, watchlist routing and contradiction suppression.
 10. React analyst UI, Expo mobile client and an authenticated realtime gateway.
 11. Docker Compose integration tests and Helm charts for the application and a single-server community stack.
 
@@ -48,7 +48,7 @@ No licence fee or paid API subscription is required to run the repository-owned 
 | **Go** | Runs the high-throughput ingestion path: feed collection, document fetching, stream normalization and the authenticated realtime gateway. |
 | **Python** | Implements NLP extraction, entity resolution, claim intelligence, graph and search projection, graph query and analytics services, alert and notification workers, and the Velato policy engine. |
 | **[Velato](https://velato.net/)** | Encodes executable alert policies as musical MIDI instruction sequences. SignalChord also provides auditable `.vasm` source that compiles to the same deterministic MIDI policy IR. |
-| **[Merzato](https://github.com/Pepitodrop/merzato-lang)** | Provides a multimodal art-programming surface in Policy Studio: stable Assembly can be validated and executed locally, while ordered Piet-colour SVG blocks and MIDI notes compile into the same bounded instruction stream. |
+| **[Merzato](https://github.com/Pepitodrop/merzato-lang)** | Provides a multimodal policy language in Policy Studio. Stable Assembly and Piet/MIDI artwork remain available, while Merzato 1.3 speech programs now implement alert triage, watchlist routing and contradiction suppression through the bounded local VM. |
 | **Ruby** | Powers the Rails control plane for identity, organizations, tenancy, RBAC, sources, watchlists, investigations, alerts, audit records and the transactional outbox. |
 | **Protocol Buffers** | Defines versioned Kafka event contracts and compatibility-safe schemas shared across services. |
 | **Cypher** | Defines Neo4j constraints, idempotent graph mutations, evidence relationships and approved graph queries. |
@@ -82,12 +82,17 @@ The two requested stylistic showcase pieces use broad genre characteristics only
 
 ## Merzato multimodal policy programming
 
-SignalChord integrates [Merzato 1.0.1](https://github.com/Pepitodrop/merzato-lang) in Policy Studio using the upstream assembler and validator pinned to commit `d555a1ebdeb45fdbb84b6df7124c811209846059`. The browser uses a SignalChord-owned restricted execution adapter rather than Merzato's general browser host, so programs cannot obtain network, prompt, DOM, filesystem or shell capabilities.
+SignalChord integrates [Merzato 1.3.0](https://github.com/Pepitodrop/merzato-lang) in Policy Studio using selected upstream assembler, validator, error and speech-compiler modules pinned to commit `79d4a04ccc2836fb0caaa1254d5b03aeb2a02b19`. The browser uses a SignalChord-owned restricted execution adapter rather than Merzato's general browser host, so programs cannot obtain network, prompt, DOM, filesystem or shell capabilities.
 
-The two main Merzato features are:
+Five Merzato features are available:
 
-1. **Bounded Assembly policy runner:** write or paste `.mza` programs, validate opcodes, labels, registers, operands and jump targets, execute them with strict step/stack/call-stack/heap/string limits, and inspect output, registers and the sealed instruction stream.
+1. **Bounded Assembly policy runner:** write or paste `.mza` programs, validate opcodes, constants, labels, registers, operands and jump targets, execute them with strict step/stack/call-stack/heap/string limits, and inspect output, registers and the sealed instruction stream.
 2. **Executable artwork compiler:** write ordered SVG rectangles using Piet colours plus `data-note` MIDI metadata; SignalChord compiles their colour transitions and note intervals into validated Merzato Assembly, runs the program locally, and displays the score, generated Assembly and final IR for auditing.
+3. **Alert triage scoring:** a Merzato `.merz` speech program combines source trust, novelty, entity relevance, recency, source diversity, corroborations, contradictions and watchlist state into `alert_score`, `severity_code` and `routing_code` outputs.
+4. **Watchlist routing:** a separate executable Merzato speech policy routes matched entities to urgent code `7`, regional code `4` or observation code `1`; unmatched signals are deterministically suppressed.
+5. **Contradiction safety gate:** a third Merzato speech policy suppresses contradiction-dominated or low-trust signals and sends them to investigation route `5` while allowing stronger evidence through route `2`.
+
+The three SignalChord decision programs compile their bounded inputs into immutable Merzato constants and expose the shared policy contract through VM registers: `r10` is `alert_score`, `r11` is `severity_code`, `r12` is `routing_code` and `r13` is `suppressed`. Their generated Assembly and validated instruction streams remain visible in Policy Studio for auditability.
 
 Only two local MerzScript phrases are enabled: `THE CRITIC SAYS` writes to the studio output and `THE PERFORMANCE IS OVER` halts execution. All other host phrases fail closed. Vendored source provenance and the MIT licence are retained under [`apps/web/src/vendor/merzato-lang`](apps/web/src/vendor/merzato-lang).
 
@@ -132,7 +137,8 @@ See [Single-server Kubernetes](docs/single-server-kubernetes.md), [Deployment](d
 ## Repository map
 
 - `apps/` — web, mobile and Rails control plane.
-- `apps/web/src/vendor/merzato-lang/` — pinned Merzato assembler/validator source and MIT licence used by Policy Studio.
+- `apps/web/src/vendor/merzato-lang/` — pinned Merzato assembler, validator, error and speech-compiler source plus the MIT licence used by Policy Studio.
+- `apps/web/src/merzatoCorePolicies.ts` — three bounded Merzato speech programs for triage, routing and contradiction gating.
 - `services/` — Go and Python streaming components.
 - `packages/` — TypeScript clients, domain types and event schemas.
 - `graph/` — Neo4j constraints, queries and fixtures.
@@ -164,4 +170,4 @@ Making the source public does not mean a hosted SignalChord deployment is produc
 
 ## License
 
-SignalChord source code is licensed under the [Apache License 2.0](LICENSE). The vendored Merzato assembler and validator remain under their included MIT licence. Third-party services, images, connectors, datasets and model artifacts retain their own licenses and terms. See [NOTICE](NOTICE), [Community self-hosting](docs/community-self-hosting.md), and the [license notes](docs/license-recommendation.md).
+SignalChord source code is licensed under the [Apache License 2.0](LICENSE). The vendored Merzato assembler, validator, error and speech-compiler modules remain under their included MIT licence. Third-party services, images, connectors, datasets and model artifacts retain their own licenses and terms. See [NOTICE](NOTICE), [Community self-hosting](docs/community-self-hosting.md), and the [license notes](docs/license-recommendation.md).
