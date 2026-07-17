@@ -1,4 +1,4 @@
-name: Release Failure Report
+name: Release Result Report
 
 on:
   workflow_run:
@@ -14,16 +14,123 @@ permissions:
 
 jobs:
   report:
-    if: ${{ github.event.workflow_run.conclusion != 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Publish actionable release failure
+      - name: Publish verified release result
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const run = context.payload.workflow_run;
+            const releaseTag = 'v1.0.0';
+            const expectedCommit = 'e6171e87657570f9eb6181d799709f8433113d62';
+            const failureTitle = '[release] v1.0.0 workflow failed';
+            const successTitle = '[release] v1.0.0 published';
+
+            const existing = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: 'all', per_page: 100 }
+            );
+
+            const findIssue = (title) => existing.find(
+              (item) => !item.pull_request && item.title === title
+            );
+
+            const upsertIssue = async (title, body, state) => {
+              const issue = findIssue(title);
+              if (issue) {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: issue.number,
+                  body,
+                  state,
+                  ...(state === 'closed' ? { state_reason: 'completed' } : {}),
+                });
+                return issue.number;
+              }
+
+              const created = await github.rest.issues.create({ owner, repo, title, body });
+              if (state === 'closed') {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: created.data.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+              }
+              return created.data.number;
+            };
+
+            if (run.conclusion === 'success') {
+              const { data: release } = await github.rest.repos.getReleaseByTag({
+                owner,
+                repo,
+                tag: releaseTag,
+              });
+
+              if (release.draft || release.prerelease || !release.published_at) {
+                throw new Error(`${releaseTag} is not a final published release`);
+              }
+
+              const ref = await github.rest.git.getRef({ owner, repo, ref: `tags/${releaseTag}` });
+              let tagCommit = ref.data.object.sha;
+              if (ref.data.object.type === 'tag') {
+                const annotatedTag = await github.rest.git.getTag({
+                  owner,
+                  repo,
+                  tag_sha: ref.data.object.sha,
+                });
+                tagCommit = annotatedTag.data.object.sha;
+              }
+              if (tagCommit !== expectedCommit) {
+                throw new Error(`${releaseTag} points to ${tagCommit}, expected ${expectedCommit}`);
+              }
+
+              const assetNames = release.assets.map((asset) => asset.name).sort();
+              const requiredAssets = [
+                'SHA256SUMS',
+                'image-digests.txt',
+                'release-manifest.json',
+                `signalchord-${releaseTag}.tar.gz`,
+              ];
+              const missingAssets = requiredAssets.filter((name) => !assetNames.includes(name));
+              if (missingAssets.length) {
+                throw new Error(`Published release is missing assets: ${missingAssets.join(', ')}`);
+              }
+
+              const failureIssue = findIssue(failureTitle);
+              if (failureIssue && failureIssue.state !== 'closed') {
+                await github.rest.issues.update({
+                  owner,
+                  repo,
+                  issue_number: failureIssue.number,
+                  state: 'closed',
+                  state_reason: 'completed',
+                });
+              }
+
+              const body = [
+                `SignalChord ${releaseTag} was published successfully and verified through the GitHub Releases API.`,
+                '',
+                `- Release: ${release.html_url}`,
+                `- Published at: ${release.published_at}`,
+                `- Immutable tag commit: \`${tagCommit}\``,
+                `- Workflow run: ${run.html_url}`,
+                `- Workflow head SHA: \`${run.head_sha}\``,
+                `- Workflow attempt: ${run.run_attempt}`,
+                '',
+                '## Verified release assets',
+                '',
+                ...assetNames.map((name) => `- \`${name}\``),
+              ].join('\n');
+
+              await upsertIssue(successTitle, body, 'closed');
+              return;
+            }
+
             const jobs = await github.paginate(
               github.rest.actions.listJobsForWorkflowRun,
               { owner, repo, run_id: run.id, per_page: 100 }
@@ -46,9 +153,8 @@ jobs:
                 })
               : ['- GitHub returned no failed job metadata; inspect the workflow run directly.'];
 
-            const title = '[release] v1.0.0 workflow failed';
             const body = [
-              'The fail-closed SignalChord release workflow did not publish `v1.0.0`.',
+              `The fail-closed SignalChord release workflow did not publish \`${releaseTag}\`.`,
               '',
               `- Workflow conclusion: **${run.conclusion}**`,
               `- Event: \`${run.event}\``,
@@ -61,23 +167,7 @@ jobs:
               '',
               ...lines,
               '',
-              'The release tag is intentionally withheld until every image build, scan, signature and provenance verification succeeds.',
+              'The release remains unpublished until every image build, scan, signature, provenance verification and release-asset check succeeds.',
             ].join('\n');
 
-            const existing = await github.paginate(
-              github.rest.issues.listForRepo,
-              { owner, repo, state: 'all', per_page: 100 }
-            );
-            const issue = existing.find((item) => !item.pull_request && item.title === title);
-
-            if (issue) {
-              await github.rest.issues.update({
-                owner,
-                repo,
-                issue_number: issue.number,
-                body,
-                state: 'open',
-              });
-            } else {
-              await github.rest.issues.create({ owner, repo, title, body });
-            }
+            await upsertIssue(failureTitle, body, 'open');
