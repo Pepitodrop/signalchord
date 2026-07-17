@@ -99,6 +99,11 @@ updates:
         )
         self.write(
             root,
+            "apps/web/src/main.tsx",
+            'const email = useState(""); const password = useState(""); autoComplete="username"; autoComplete="current-password";\n',
+        )
+        self.write(
+            root,
             "apps/mobile/app/index.tsx",
             "const serverUrl = 'configured'; const submitting = false; const label = 'Server URL';\n",
         )
@@ -160,6 +165,24 @@ updates:
             root = Path(tmp)
             self.fixture(root)
             self.write(root, "scripts/single-server/restore-v1.sh", "sha256sum -c pg_restore --yes\n")
+            self.assert_fails(root)
+
+    def test_prefilled_web_credentials_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            self.write(
+                root,
+                "apps/web/src/main.tsx",
+                'const email = useState("analyst@signalchord.local"); const password = useState("signalchord-demo-password"); autoComplete="username"; autoComplete="current-password";\n',
+            )
+            self.assert_fails(root)
+
+    def test_missing_web_autocomplete_contract_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            self.write(root, "apps/web/src/main.tsx", 'const email = useState(""); const password = useState("");\n')
             self.assert_fails(root)
 
     def test_prefilled_mobile_credentials_fail(self) -> None:

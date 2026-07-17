@@ -27,6 +27,18 @@ These pieces are both musical instruction sequences and real SignalChord policie
 
 The first two pieces use only broad genre and rhythmic characteristics requested for the showcase. They do not reproduce the melody, harmony or arrangement of an existing copyrighted song.
 
+## Policy Studio playback easter egg
+
+Open **Policy Studio** in the web application and select **♪ Reveal scores**. Every program card provides:
+
+- the complete executable note sequence, including its MIDI instruction-bank number;
+- a **Play code** control that sonifies the real opcode order through browser Web Audio;
+- a **Download `.mid`** control that generates an executable Standard MIDI file with the actual channels, intervals, velocities and operands;
+- a plain-language explanation directly under the player describing the score, severity, routing and suppression behavior;
+- the checked-in `.vasm` source in an expandable panel.
+
+The browser playback is an audible interpretation of the same instructions. The downloaded MIDI remains machine-executable by the constrained Velato engine rather than being a separate decorative audio asset.
+
 ## Instruction banks
 
 SignalChord Velato 1.1 extends the instruction set through MIDI channels `1`–`3` while retaining interval-based commands:

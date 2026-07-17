@@ -36,6 +36,7 @@ REQUIRED_FILES = (
     "scripts/single-server/restore.sh",
     "scripts/single-server/restore-v1.sh",
     "scripts/single-server/acceptance.sh",
+    "apps/web/src/main.tsx",
     "apps/mobile/app/index.tsx",
     "apps/mobile/lib/session.tsx",
 )
@@ -151,6 +152,18 @@ def validate(root: Path = ROOT) -> None:
     for marker in ("signalchord-feed-collector", "/api/v1/sources", "/api/v1/watchlists", "/api/v1/alerts"):
         if marker not in acceptance:
             failures.append(f"single-server acceptance must retain control: {marker}")
+
+    web_screen = read(root, "apps/web/src/main.tsx")
+    forbidden_web_defaults = (
+        'useState("analyst@signalchord.local")',
+        'useState("signalchord-demo-password")',
+    )
+    for marker in forbidden_web_defaults:
+        if marker in web_screen:
+            failures.append(f"web sign-in must not prefill development credential: {marker}")
+    for marker in ('useState("")', 'autoComplete="username"', 'autoComplete="current-password"'):
+        if marker not in web_screen:
+            failures.append(f"web sign-in must retain empty, browser-compatible release input: {marker}")
 
     mobile_screen = read(root, "apps/mobile/app/index.tsx")
     forbidden_mobile_defaults = (
