@@ -10,6 +10,7 @@ COPY apps/web/package.json ./apps/web/package.json
 RUN pnpm install --frozen-lockfile
 COPY packages/domain-types ./packages/domain-types
 COPY packages/api-client ./packages/api-client
+COPY velato ./velato
 COPY apps/web ./apps/web
 RUN pnpm --filter @signalchord/web build
 
