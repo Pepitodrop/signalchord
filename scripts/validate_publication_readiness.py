@@ -207,9 +207,11 @@ def validate(root: Path = ROOT) -> None:
     ):
         if marker not in release:
             failures.append(f"release workflow must retain publication artifact/control: {marker}")
-    for forbidden in ("attest-build-provenance", "attestations: write", "    tags:"):
+    for forbidden in ("attest-build-provenance", "attestations: write"):
         if forbidden in release:
-            failures.append(f"release workflow contains unsupported or duplicate release control: {forbidden}")
+            failures.append(f"release workflow contains unsupported release control: {forbidden}")
+    if any(line == "    tags:" for line in release.splitlines()):
+        failures.append("release workflow must not use a tag push trigger that duplicates marker publication")
 
     issue_config = read(root, ".github/ISSUE_TEMPLATE/config.yml")
     if "security/advisories/new" not in issue_config or "blank_issues_enabled: false" not in issue_config:
