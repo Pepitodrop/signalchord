@@ -129,9 +129,9 @@ function parseString(token, lineNumber) {
   return decodeSingleQuoted(token, lineNumber);
 }
 
-function parseOperand(token, lineNumber) {
+function parseLiteral(token, lineNumber) {
   if (/^r(?:[0-9]|1[0-5])$/i.test(token)) {
-    return { type: 'register', index: Number(token.slice(1)) };
+    return { matched: true, value: { type: 'register', index: Number(token.slice(1)) } };
   }
   if (/^r\d+$/i.test(token)) {
     throw new MerzatoSyntaxError(`Register '${token}' is outside r0-r15 on line ${lineNumber}`, {
@@ -139,12 +139,84 @@ function parseOperand(token, lineNumber) {
       line: lineNumber
     });
   }
-  if (/^[+-]?\d+$/.test(token)) return BigInt(token);
+  if (/^[+-]?\d+$/.test(token)) return { matched: true, value: BigInt(token) };
   if ((token.startsWith('"') && token.endsWith('"')) ||
       (token.startsWith("'") && token.endsWith("'"))) {
-    return parseString(token, lineNumber);
+    return { matched: true, value: parseString(token, lineNumber) };
   }
-  return token;
+  return { matched: false, value: undefined };
+}
+
+function cloneConstant(value) {
+  return value && typeof value === 'object' && value.type === 'register'
+    ? { type: 'register', index: value.index }
+    : value;
+}
+
+function parseOperand(token, lineNumber, constants) {
+  if (token.startsWith('$')) {
+    const match = token.match(/^\$([A-Za-z_][\w.-]*)$/);
+    if (!match) {
+      throw new MerzatoSyntaxError(`Invalid constant reference '${token}' on line ${lineNumber}`, {
+        code: 'INVALID_CONSTANT',
+        line: lineNumber
+      });
+    }
+    const name = match[1];
+    if (!Object.hasOwn(constants, name)) {
+      throw new MerzatoSyntaxError(`Unknown constant '${name}' on line ${lineNumber}`, {
+        code: 'UNKNOWN_CONSTANT',
+        line: lineNumber
+      });
+    }
+    return cloneConstant(constants[name]);
+  }
+
+  const literal = parseLiteral(token, lineNumber);
+  return literal.matched ? literal.value : token;
+}
+
+function collectConstants(lines) {
+  const constants = Object.create(null);
+
+  for (let lineNumber = 1; lineNumber <= lines.length; lineNumber += 1) {
+    const line = stripComment(lines[lineNumber - 1]).trim();
+    if (!line.startsWith('.')) continue;
+
+    const directive = tokenize(line, lineNumber);
+    if (directive[0]?.toLowerCase() !== '.const') continue;
+    if (directive.length !== 3) {
+      throw new MerzatoSyntaxError(`.const expects a name and one literal on line ${lineNumber}`, {
+        code: 'INVALID_DIRECTIVE',
+        line: lineNumber
+      });
+    }
+
+    const name = directive[1];
+    if (!/^[A-Za-z_][\w.-]*$/.test(name)) {
+      throw new MerzatoSyntaxError(`Invalid constant name '${name}' on line ${lineNumber}`, {
+        code: 'INVALID_CONSTANT',
+        line: lineNumber
+      });
+    }
+    if (Object.hasOwn(constants, name)) {
+      throw new MerzatoSyntaxError(`Duplicate constant '${name}' on line ${lineNumber}`, {
+        code: 'DUPLICATE_CONSTANT',
+        line: lineNumber
+      });
+    }
+
+    const literal = parseLiteral(directive[2], lineNumber);
+    if (!literal.matched) {
+      throw new MerzatoSyntaxError(
+        `.const '${name}' must contain an integer, register, or quoted string literal on line ${lineNumber}`,
+        { code: 'INVALID_CONSTANT', line: lineNumber }
+      );
+    }
+    constants[name] = literal.value;
+  }
+
+  return constants;
 }
 
 export function assemble(source, { filename = '<memory>' } = {}) {
@@ -157,13 +229,17 @@ export function assemble(source, { filename = '<memory>' } = {}) {
   let entryLabel = null;
 
   const lines = source.split(/\r?\n/);
+  const constants = collectConstants(lines);
+
   for (let lineNumber = 1; lineNumber <= lines.length; lineNumber += 1) {
     let line = stripComment(lines[lineNumber - 1]).trim();
     if (!line) continue;
 
     if (line.startsWith('.')) {
       const directive = tokenize(line, lineNumber);
-      if (directive[0] !== '.entry') {
+      const directiveName = directive[0]?.toLowerCase();
+      if (directiveName === '.const') continue;
+      if (directiveName !== '.entry') {
         throw new MerzatoSyntaxError(`Unknown directive '${directive[0]}' on line ${lineNumber}`, {
           code: 'UNKNOWN_DIRECTIVE',
           line: lineNumber
@@ -212,7 +288,7 @@ export function assemble(source, { filename = '<memory>' } = {}) {
 
     instructions.push({
       op,
-      args: tokens.map(token => parseOperand(token, lineNumber)),
+      args: tokens.map(token => parseOperand(token, lineNumber, constants)),
       line: lineNumber
     });
   }
