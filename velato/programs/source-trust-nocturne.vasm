@@ -1,0 +1,76 @@
+# Source Trust Nocturne
+#
+# An original restrained, descending policy contour.
+#
+# Operational function:
+# - act as a source-quality gate;
+# - reward trust, corroboration, diversity and recency;
+# - route highly trusted material to routing code 2;
+# - suppress low-trust or uncorroborated items.
+
+LOAD_INPUT source_trust
+PUSH_CONST 40
+MUL
+
+LOAD_INPUT corroboration_count
+PUSH_CONST 4
+MIN
+PUSH_CONST 4
+DIV
+PUSH_CONST 30
+MUL
+ADD
+
+LOAD_INPUT source_diversity
+PUSH_CONST 20
+MUL
+ADD
+
+LOAD_INPUT recency
+PUSH_CONST 10
+MUL
+ADD
+
+PUSH_CONST 0
+PUSH_CONST 100
+CLAMP
+DUP
+STORE_LOCAL 0
+STORE_SCORE
+
+PUSH_CONST 1
+LOAD_LOCAL 0
+PUSH_CONST 30
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 55
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 75
+GTE
+ADD
+STORE_SEVERITY
+
+LOAD_INPUT source_trust
+PUSH_CONST 100
+MUL
+PUSH_CONST 75
+GTE
+PUSH_CONST 2
+PUSH_CONST 0
+SELECT
+STORE_ROUTE
+
+LOAD_INPUT source_trust
+PUSH_CONST 100
+MUL
+PUSH_CONST 45
+LT
+LOAD_INPUT corroboration_count
+PUSH_CONST 1
+LT
+OR
+STORE_SUPPRESS
+HALT

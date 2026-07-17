@@ -1,0 +1,69 @@
+# Novelty Rondo
+#
+# An original returning novelty-recency motif.
+#
+# Operational function:
+# - identify emerging stories with relevant entities and graph position;
+# - route strong discoveries to routing code 3;
+# - suppress stale, low-novelty noise unless it is an explicit watchlist match.
+
+LOAD_INPUT novelty
+PUSH_CONST 40
+MUL
+
+LOAD_INPUT recency
+PUSH_CONST 25
+MUL
+ADD
+
+LOAD_INPUT entity_relevance
+PUSH_CONST 20
+MUL
+ADD
+
+LOAD_INPUT graph_centrality
+PUSH_CONST 15
+MUL
+ADD
+
+PUSH_CONST 0
+PUSH_CONST 100
+CLAMP
+DUP
+STORE_LOCAL 0
+STORE_SCORE
+
+PUSH_CONST 1
+LOAD_LOCAL 0
+PUSH_CONST 35
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 60
+GTE
+ADD
+LOAD_LOCAL 0
+PUSH_CONST 80
+GTE
+ADD
+STORE_SEVERITY
+
+LOAD_LOCAL 0
+PUSH_CONST 70
+GTE
+PUSH_CONST 3
+PUSH_CONST 1
+SELECT
+STORE_ROUTE
+
+LOAD_INPUT novelty
+PUSH_CONST 100
+MUL
+PUSH_CONST 35
+LT
+LOAD_INPUT watchlist_match
+PUSH_CONST 1
+LT
+AND
+STORE_SUPPRESS
+HALT

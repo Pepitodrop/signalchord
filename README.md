@@ -46,6 +46,7 @@ No licence fee or paid API subscription is required to run the repository-owned 
 | **TypeScript / TSX** | Implements the React analyst web application, Expo mobile client, shared API clients and domain types. |
 | **Go** | Runs the high-throughput ingestion path: feed collection, document fetching, stream normalization and the authenticated realtime gateway. |
 | **Python** | Implements NLP extraction, entity resolution, claim intelligence, graph and search projection, graph query and analytics services, alert and notification workers, and the Velato policy engine. |
+| **[Velato](https://velato.net/)** | Encodes executable alert policies as musical MIDI instruction sequences. SignalChord also provides auditable `.vasm` source that compiles to the same deterministic MIDI policy IR. |
 | **Ruby** | Powers the Rails control plane for identity, organizations, tenancy, RBAC, sources, watchlists, investigations, alerts, audit records and the transactional outbox. |
 | **Protocol Buffers** | Defines versioned Kafka event contracts and compatibility-safe schemas shared across services. |
 | **Cypher** | Defines Neo4j constraints, idempotent graph mutations, evidence relationships and approved graph queries. |
@@ -54,6 +55,28 @@ No licence fee or paid API subscription is required to run the repository-owned 
 | **YAML** | Configures Docker Compose, Kubernetes and Helm, GitHub Actions, observability and service deployment settings. |
 | **HCL / Terraform** | Describes infrastructure provisioning wrappers and environment-level deployment inputs. |
 | **Dockerfile and nginx configuration** | Build reproducible service images and serve the web application through a rootless runtime with same-origin API and realtime proxying. |
+
+## Velato policy programming
+
+SignalChord uses a deliberately constrained Velato dialect for policies that must be understandable as code, playable as MIDI and safe to execute in an alerting pipeline.
+
+Its main features are:
+
+1. **MIDI-native executable source:** pitch intervals encode operations, MIDI channels select instruction banks and bounded note velocity values encode operands.
+2. **Deterministic auditability:** MIDI and `.vasm` source compile into the same sealed stack-machine IR with static analysis, source/IR hashes and reproducible execution traces.
+3. **Functional policy outputs:** programs calculate `alert_score`, `severity_code`, `routing_code` and `suppressed`; they cannot access the filesystem, network or shell and cannot create unbounded loops.
+
+Five checked-in musical programs provide distinct production functions:
+
+| Program | Musical direction | Function in SignalChord |
+| --- | --- | --- |
+| [`Watchlist Privateer`](velato/programs/watchlist-privateer.vasm) | Original cinematic seafaring action pulse | Escalates corroborated, recent watchlist stories to urgent routing code `7` and suppresses low-trust or heavily contradicted material. |
+| [`City Waltz`](velato/programs/city-waltz.vasm) | Original modern German indie-pop waltz pulse | Prioritizes geographically relevant and well-sourced stories for local-impact routing code `4`. |
+| [`Contradiction Canon`](velato/programs/contradiction-canon.vasm) | Original interlocking canon-like figures | Detects contradiction-heavy stories and routes them to investigation code `5`. |
+| [`Source Trust Nocturne`](velato/programs/source-trust-nocturne.vasm) | Original restrained nocturne contour | Operates as a source-quality gate and routes highly trusted material to code `2`. |
+| [`Novelty Rondo`](velato/programs/novelty-rondo.vasm) | Original returning novelty-recency motif | Finds emerging stories and routes strong discoveries to code `3`. |
+
+The two requested stylistic showcase pieces use broad genre characteristics only and do not reproduce an existing song's melody, harmony or arrangement. Every program is tested by compiling its assembly to MIDI, decoding the MIDI back to IR and executing it against representative SignalChord inputs. See [Velato MIDI policies](velato/programs/README.md).
 
 ## Quick start
 
