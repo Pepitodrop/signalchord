@@ -17,6 +17,10 @@ import {
   runMerzatoContradictionGate,
   runMerzatoWatchlistRouting,
 } from "./merzatoCorePolicies";
+import {
+  MerzatoDecisionPipeline,
+  runMerzatoDecisionPipeline,
+} from "./merzatoDecisionPipeline";
 import "./merzatoCore.css";
 
 const MERZATO_UPSTREAM = {
@@ -26,6 +30,7 @@ const MERZATO_UPSTREAM = {
 } as const;
 
 type CoreFeatureKey = "triage" | "routing" | "contradiction";
+type NumericPolicyInputKey = Exclude<keyof SignalPolicyInputs, "watchlistMatch">;
 
 const CORE_FEATURES: Array<{
   key: CoreFeatureKey;
@@ -62,7 +67,7 @@ const CORE_FEATURES: Array<{
 ];
 
 const INPUT_FIELDS: Array<{
-  key: keyof SignalPolicyInputs;
+  key: NumericPolicyInputKey;
   label: string;
   min: number;
   max: number;
@@ -72,10 +77,17 @@ const INPUT_FIELDS: Array<{
   {key: "contradictionCount", label: "Contradictions", min: 0, max: 20},
   {key: "novelty", label: "Novelty", min: 0, max: 100},
   {key: "entityRelevance", label: "Entity relevance", min: 0, max: 100},
-  {key: "watchlistMatch", label: "Watchlist match", min: 0, max: 1},
   {key: "recency", label: "Recency", min: 0, max: 100},
   {key: "sourceDiversity", label: "Source diversity", min: 0, max: 100},
 ];
+
+function featureTitle(feature: MerzatoCoreDecision["feature"]): string {
+  switch (feature) {
+    case "alert-triage": return "Alert triage scoring";
+    case "watchlist-routing": return "Watchlist routing";
+    case "contradiction-gate": return "Contradiction safety gate";
+  }
+}
 
 function ResultView({report}: {report: MerzatoRunReport}) {
   return (
@@ -134,15 +146,21 @@ function ErrorView({error}: {error: MerzatoErrorInfo | null}) {
   );
 }
 
+function DecisionMetrics({decision}: {decision: MerzatoCoreDecision}) {
+  return (
+    <div className="merzatoDecisionMetrics">
+      <span><b>{decision.alertScore}</b><small>alert score</small></span>
+      <span><b>{decision.severityCode}</b><small>severity</small></span>
+      <span><b>{decision.routingCode}</b><small>route</small></span>
+      <span><b>{decision.suppressed ? "yes" : "no"}</b><small>suppressed</small></span>
+    </div>
+  );
+}
+
 function DecisionView({decision}: {decision: MerzatoCoreDecision}) {
   return (
     <div className="merzatoDecision" aria-live="polite">
-      <div className="merzatoDecisionMetrics">
-        <span><b>{decision.alertScore}</b><small>alert score</small></span>
-        <span><b>{decision.severityCode}</b><small>severity</small></span>
-        <span><b>{decision.routingCode}</b><small>route</small></span>
-        <span><b>{decision.suppressed ? "yes" : "no"}</b><small>suppressed</small></span>
-      </div>
+      <DecisionMetrics decision={decision}/>
       <details className="merzatoSpeechSource">
         <summary>View executable Merzato speech (.merz)</summary>
         <pre>{decision.speechSource}</pre>
@@ -187,6 +205,8 @@ export function MerzatoStudio() {
   const [policyInputs, setPolicyInputs] = useState<SignalPolicyInputs>(DEFAULT_SIGNAL_POLICY_INPUTS);
   const [decisions, setDecisions] = useState<Partial<Record<CoreFeatureKey, MerzatoCoreDecision>>>({});
   const [policyErrors, setPolicyErrors] = useState<Partial<Record<CoreFeatureKey, MerzatoErrorInfo>>>({});
+  const [pipeline, setPipeline] = useState<MerzatoDecisionPipeline | null>(null);
+  const [pipelineError, setPipelineError] = useState<MerzatoErrorInfo | null>(null);
 
   const executeAssembly = () => {
     setAssemblyError(null);
@@ -208,7 +228,21 @@ export function MerzatoStudio() {
     }
   };
 
+  const clearCoreResults = () => {
+    setDecisions({});
+    setPolicyErrors({});
+    setPipeline(null);
+    setPipelineError(null);
+  };
+
+  const updatePolicyInput = (key: keyof SignalPolicyInputs, value: number) => {
+    setPolicyInputs(current => ({...current, [key]: value}));
+    clearCoreResults();
+  };
+
   const executeCoreFeature = (feature: typeof CORE_FEATURES[number]) => {
+    setPipeline(null);
+    setPipelineError(null);
     setPolicyErrors(current => ({...current, [feature.key]: undefined}));
     try {
       const decision = feature.run(policyInputs);
@@ -216,6 +250,24 @@ export function MerzatoStudio() {
     } catch (error) {
       setDecisions(current => ({...current, [feature.key]: undefined}));
       setPolicyErrors(current => ({...current, [feature.key]: merzatoErrorInfo(error)}));
+    }
+  };
+
+  const executeDecisionPipeline = () => {
+    setPolicyErrors({});
+    setPipelineError(null);
+    try {
+      const result = runMerzatoDecisionPipeline(policyInputs);
+      setPipeline(result);
+      setDecisions({
+        triage: result.triage,
+        routing: result.watchlist,
+        contradiction: result.contradiction,
+      });
+    } catch (error) {
+      setPipeline(null);
+      setDecisions({});
+      setPipelineError(merzatoErrorInfo(error));
     }
   };
 
@@ -322,14 +374,39 @@ export function MerzatoStudio() {
                 max={field.max}
                 step={1}
                 value={policyInputs[field.key]}
-                onChange={event => setPolicyInputs(current => ({
-                  ...current,
-                  [field.key]: Number(event.target.value),
-                }))}
+                onChange={event => updatePolicyInput(field.key, Number(event.target.value))}
               />
             </label>
           ))}
+          <label className="merzatoWatchlistToggle">
+            <input
+              type="checkbox"
+              checked={policyInputs.watchlistMatch === 1}
+              onChange={event => updatePolicyInput("watchlistMatch", event.target.checked ? 1 : 0)}
+            />
+            <span><b>Watchlist match</b><small>Enable urgent or regional routing</small></span>
+          </label>
         </div>
+
+        <section className="merzatoPipeline" aria-labelledby="merzato-pipeline-heading">
+          <div>
+            <p className="eyebrow">Complete decision path</p>
+            <h4 id="merzato-pipeline-heading">Execute all three programs and apply deterministic precedence.</h4>
+            <p className="muted">Safety suppression wins first, then a valid watchlist route, then general alert triage.</p>
+          </div>
+          <button className="primary" type="button" onClick={executeDecisionPipeline}>Run complete decision path</button>
+          <ErrorView error={pipelineError}/>
+          {pipeline && (
+            <div className="merzatoPipelineResult" aria-live="polite">
+              <div>
+                <small>Final decision</small>
+                <strong>{featureTitle(pipeline.finalDecision.feature)}</strong>
+                <p className="muted">{pipeline.reason}</p>
+              </div>
+              <DecisionMetrics decision={pipeline.finalDecision}/>
+            </div>
+          )}
+        </section>
 
         <div className="merzatoCoreFeatures">
           {CORE_FEATURES.map(feature => (
