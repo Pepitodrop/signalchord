@@ -1,0 +1,74 @@
+name: Release Image Security
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release-image-security.yml
+      - infrastructure/docker/control-plane.Dockerfile
+      - infrastructure/docker/python-service.Dockerfile
+      - infrastructure/docker/web.Dockerfile
+      - apps/control-plane/Gemfile
+      - apps/control-plane/Gemfile.lock
+      - services/requirements.txt
+      - apps/web/**
+      - packages/**
+      - velato/**
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release-image-security.yml
+      - infrastructure/docker/control-plane.Dockerfile
+      - infrastructure/docker/python-service.Dockerfile
+      - infrastructure/docker/web.Dockerfile
+      - apps/control-plane/Gemfile
+      - apps/control-plane/Gemfile.lock
+      - services/requirements.txt
+      - apps/web/**
+      - packages/**
+      - velato/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-image-security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: control-plane
+            dockerfile: infrastructure/docker/control-plane.Dockerfile
+          - name: python
+            dockerfile: infrastructure/docker/python-service.Dockerfile
+          - name: web
+            dockerfile: infrastructure/docker/web.Dockerfile
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Build final release image
+        env:
+          IMAGE: signalchord-release-scan-${{ matrix.name }}:${{ github.sha }}
+        run: docker build --file "${{ matrix.dockerfile }}" --tag "$IMAGE" .
+      - name: Scan final release image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: signalchord-release-scan-${{ matrix.name }}:${{ github.sha }}
+          format: table
+          output: trivy-release-image-${{ matrix.name }}.txt
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Upload release-image scan evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: trivy-release-image-${{ matrix.name }}
+          path: trivy-release-image-${{ matrix.name }}.txt
+          if-no-files-found: warn

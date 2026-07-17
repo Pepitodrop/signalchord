@@ -15,6 +15,7 @@ import validate_workflow_actions
 
 PINNED_SHA = "0123456789abcdef0123456789abcdef01234567"
 PINNED_DIGEST = "a" * 64
+COSIGN_INSTALLER_SHA = "6f9f17788090df1f26f669e9d70d6ae9567deba6"
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -38,19 +39,41 @@ jobs:
         return f"""name: Release
 permissions:
   contents: read
+concurrency:
+  group: release-${{{{ github.ref }}}}
+  cancel-in-progress: true
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@{PINNED_SHA}
   publish-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       packages: write
       id-token: write
     steps:
       - uses: actions/checkout@{PINNED_SHA}
+      - uses: sigstore/cosign-installer@{COSIGN_INSTALLER_SHA}
+        with:
+          cosign-release: v3.0.6
+      - run: timeout 5m docker buildx imagetools inspect "$IMAGE@$DIGEST"
+      - run: timeout 5m cosign sign --yes "$IMAGE@$DIGEST"
+      - run: >-
+          timeout 5m cosign verify
+          "$IMAGE@$DIGEST"
+      - run: >-
+          timeout 5m cosign attest --yes
+          "$IMAGE@$DIGEST"
+      - run: >-
+          timeout 5m cosign verify-attestation
+          "$IMAGE@$DIGEST"
   release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -150,7 +173,7 @@ jobs:
             self.write_workflow(root, "permissions: 'write-all'\njobs: {}\n")
             self.assert_validation_fails(root)
 
-    def test_release_permission_boundaries_pass(self) -> None:
+    def test_release_permission_and_runtime_boundaries_pass(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             self.write_workflow(root, self.valid_release_workflow(), "release.yml")
@@ -173,6 +196,61 @@ jobs:
             content = self.valid_release_workflow().replace(
                 "      id-token: write",
                 "      id-token: write\n      attestations: write",
+                1,
+            )
+            self.write_workflow(root, content, "release.yml")
+            self.assert_validation_fails(root)
+
+    def test_release_must_cancel_stuck_predecessor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            content = self.valid_release_workflow().replace(
+                "cancel-in-progress: true",
+                "cancel-in-progress: false",
+                1,
+            )
+            self.write_workflow(root, content, "release.yml")
+            self.assert_validation_fails(root)
+
+    def test_release_requires_current_cosign_runtime(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            content = self.valid_release_workflow().replace(
+                COSIGN_INSTALLER_SHA,
+                PINNED_SHA,
+                1,
+            )
+            self.write_workflow(root, content, "release.yml")
+            self.assert_validation_fails(root)
+
+    def test_release_requires_pinned_cosign_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            content = self.valid_release_workflow().replace(
+                "cosign-release: v3.0.6",
+                "cosign-release: v2.5.2",
+                1,
+            )
+            self.write_workflow(root, content, "release.yml")
+            self.assert_validation_fails(root)
+
+    def test_release_requires_bounded_image_job(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            content = self.valid_release_workflow().replace(
+                "    timeout-minutes: 45\n",
+                "",
+                1,
+            )
+            self.write_workflow(root, content, "release.yml")
+            self.assert_validation_fails(root)
+
+    def test_release_requires_bounded_signing_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            content = self.valid_release_workflow().replace(
+                "timeout 5m cosign sign",
+                "cosign sign",
                 1,
             )
             self.write_workflow(root, content, "release.yml")
