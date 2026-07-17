@@ -29,6 +29,14 @@ EXPECTED_RELEASE_PERMISSIONS = {
     "job:release": {"contents": "write"},
 }
 
+EXPECTED_RELEASE_FAILURE_REPORT_PERMISSIONS = {
+    "workflow": {
+        "actions": "read",
+        "contents": "read",
+        "issues": "write",
+    }
+}
+
 
 def workflow_files(root: Path) -> list[Path]:
     directory = root / WORKFLOW_DIRECTORY
@@ -113,6 +121,29 @@ def write_permissions(permissions: dict[str, str]) -> list[str]:
     return sorted(name for name, value in permissions.items() if value in {"write", "write-all"})
 
 
+def validate_exact_permissions(
+    path: Path,
+    blocks: dict[str, dict[str, str]],
+    expected_blocks: dict[str, dict[str, str]],
+    failures: list[str],
+    root: Path,
+) -> None:
+    relative = path.relative_to(root)
+    for scope, expected in expected_blocks.items():
+        actual = blocks.get(scope)
+        if actual != expected:
+            failures.append(f"{relative}: {scope} permissions must be exactly {expected}, got {actual}")
+
+    for scope, permissions in blocks.items():
+        if scope in expected_blocks:
+            continue
+        writes = write_permissions(permissions)
+        if writes:
+            failures.append(
+                f"{relative}: unexpected write permissions in {scope}: {', '.join(writes)}"
+            )
+
+
 def validate_permissions(
     path: Path,
     blocks: dict[str, dict[str, str]],
@@ -127,21 +158,17 @@ def validate_permissions(
         failures.append(f"{relative}: top-level permissions must use an explicit permission map")
 
     if path.name == "release.yml":
-        for scope, expected in EXPECTED_RELEASE_PERMISSIONS.items():
-            actual = blocks.get(scope)
-            if actual != expected:
-                failures.append(
-                    f"{relative}: {scope} permissions must be exactly {expected}, got {actual}"
-                )
+        validate_exact_permissions(path, blocks, EXPECTED_RELEASE_PERMISSIONS, failures, root)
+        return
 
-        for scope, permissions in blocks.items():
-            if scope in EXPECTED_RELEASE_PERMISSIONS:
-                continue
-            writes = write_permissions(permissions)
-            if writes:
-                failures.append(
-                    f"{relative}: unexpected write permissions in {scope}: {', '.join(writes)}"
-                )
+    if path.name == "release-failure-report.yml":
+        validate_exact_permissions(
+            path,
+            blocks,
+            EXPECTED_RELEASE_FAILURE_REPORT_PERMISSIONS,
+            failures,
+            root,
+        )
         return
 
     for scope, permissions in blocks.items():
