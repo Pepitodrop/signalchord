@@ -37,6 +37,22 @@ EXPECTED_RELEASE_FAILURE_REPORT_PERMISSIONS = {
     }
 }
 
+COSIGN_INSTALLER_REF = (
+    "sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6"
+)
+EXPECTED_RELEASE_RUNTIME_COUNTS = {
+    "cancel-in-progress: true": 1,
+    "timeout-minutes: 20": 2,
+    "timeout-minutes: 45": 1,
+    f"uses: {COSIGN_INSTALLER_REF}": 1,
+    "cosign-release: v3.0.6": 1,
+    'timeout 5m docker buildx imagetools inspect "$IMAGE@$DIGEST"': 1,
+    'timeout 5m cosign sign --yes "$IMAGE@$DIGEST"': 1,
+    "timeout 5m cosign verify\n": 1,
+    "timeout 5m cosign attest --yes\n": 1,
+    "timeout 5m cosign verify-attestation\n": 1,
+}
+
 
 def workflow_files(root: Path) -> list[Path]:
     directory = root / WORKFLOW_DIRECTORY
@@ -144,6 +160,18 @@ def validate_exact_permissions(
             )
 
 
+def validate_release_runtime(path: Path, failures: list[str], root: Path) -> None:
+    relative = path.relative_to(root)
+    content = path.read_text(encoding="utf-8")
+    for snippet, expected_count in EXPECTED_RELEASE_RUNTIME_COUNTS.items():
+        actual_count = content.count(snippet)
+        if actual_count != expected_count:
+            failures.append(
+                f"{relative}: release runtime safeguard {snippet!r} must occur exactly "
+                f"{expected_count} time(s), got {actual_count}"
+            )
+
+
 def validate_permissions(
     path: Path,
     blocks: dict[str, dict[str, str]],
@@ -159,6 +187,7 @@ def validate_permissions(
 
     if path.name == "release.yml":
         validate_exact_permissions(path, blocks, EXPECTED_RELEASE_PERMISSIONS, failures, root)
+        validate_release_runtime(path, failures, root)
         return
 
     if path.name == "release-failure-report.yml":
