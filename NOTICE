@@ -3,4 +3,4 @@ Copyright 2026 Luis Benedikt and contributors
 
 This product includes or interoperates with third-party software and services that are licensed separately. Container images, Apache Kafka, Neo4j, PostgreSQL, Valkey, MinIO, OpenSearch, Grafana, OpenTelemetry, language runtimes, libraries, optional connectors, datasets and model artifacts remain subject to their respective licenses and terms.
 
-The SignalChord web Policy Studio includes selected Merzato 1.0.1 assembler, validator and error modules from https://github.com/Pepitodrop/merzato-lang at commit d555a1ebdeb45fdbb84b6df7124c811209846059. Those files are Copyright (c) 2026 Luis Benedikt and Merzato contributors and are distributed under the MIT License included at apps/web/src/vendor/merzato-lang/LICENSE.
+The SignalChord web Policy Studio includes selected Merzato 1.3.0 assembler, validator, error and speech-compiler modules from https://github.com/Pepitodrop/merzato-lang at commit 79d4a04ccc2836fb0caaa1254d5b03aeb2a02b19. Those files are Copyright (c) 2026 Luis Benedikt and Merzato contributors and are distributed under the MIT License included at apps/web/src/vendor/merzato-lang/LICENSE.
