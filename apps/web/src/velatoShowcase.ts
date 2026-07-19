@@ -3,6 +3,7 @@ import cityWaltzSource from "../../../velato/programs/city-waltz.vasm?raw";
 import contradictionCanonSource from "../../../velato/programs/contradiction-canon.vasm?raw";
 import sourceTrustNocturneSource from "../../../velato/programs/source-trust-nocturne.vasm?raw";
 import noveltyRondoSource from "../../../velato/programs/novelty-rondo.vasm?raw";
+import liveGraphMinuteSource from "../../../velato/programs/live-graph-minute.vasm?raw";
 
 const INPUTS = [
   "source_trust",
@@ -166,6 +167,21 @@ export const VELATO_SHOWCASE_PROGRAMS: readonly VelatoShowcaseProgram[] = [
       "Identifies emerging stories using novelty, recency, entity relevance and graph position, routes strong discoveries to queue 3, and suppresses stale low-novelty noise unless it matches a watchlist.",
     rhythm: [0.26, 0.16, 0.16, 0.22],
     accents: [1.12, 0.72, 0.78, 0.9],
+  },
+  {
+    id: "live-graph-minute",
+    title: "Live Graph Minute",
+    filename: "live-graph-minute.mid",
+    source: liveGraphMinuteSource,
+    style: "Original one-minute graph pulse",
+    meter: "4/4",
+    tempo: 100,
+    rootMidi: 50,
+    route: 6,
+    purpose:
+      "Calculates graph momentum from centrality, novelty, recency and source diversity, derives severity, routes mature graph signals to queue 6, and suppresses low-trust or contradiction-heavy material.",
+    rhythm: [1],
+    accents: [1.15, 0.8, 0.9, 0.78],
   },
 ] as const;
 
