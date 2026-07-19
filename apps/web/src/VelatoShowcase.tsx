@@ -6,6 +6,7 @@ import {
   scheduleAudibleTone,
 } from "./browserAudio";
 import {MerzatoStudio} from "./MerzatoStudio";
+import {MerzSpeechLibrary} from "./MerzSpeechLibrary";
 import {
   buildVelatoPlaybackEvents,
   encodeVelatoMidi,
@@ -215,6 +216,7 @@ export function VelatoShowcase() {
         )}
       </article>
       <MerzatoStudio/>
+      <MerzSpeechLibrary/>
     </>
   );
 }
