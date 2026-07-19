@@ -1,5 +1,6 @@
 import {describe, expect, it} from "vitest";
 
+import {audibleMidi, PLAYBACK_TRANSPOSE_SEMITONES} from "./browserAudio";
 import {
   buildVelatoPlaybackEvents,
   encodeVelatoMidi,
@@ -12,10 +13,10 @@ function ascii(bytes: Uint8Array, start: number, length: number): string {
 }
 
 describe("Velato showcase", () => {
-  it("contains five distinct functional programs", () => {
-    expect(VELATO_SHOWCASE_PROGRAMS).toHaveLength(5);
-    expect(new Set(VELATO_SHOWCASE_PROGRAMS.map(program => program.id)).size).toBe(5);
-    expect(new Set(VELATO_SHOWCASE_PROGRAMS.map(program => program.route)).size).toBe(5);
+  it("contains six distinct functional programs", () => {
+    expect(VELATO_SHOWCASE_PROGRAMS).toHaveLength(6);
+    expect(new Set(VELATO_SHOWCASE_PROGRAMS.map(program => program.id)).size).toBe(6);
+    expect(new Set(VELATO_SHOWCASE_PROGRAMS.map(program => program.route)).size).toBe(6);
   });
 
   it.each(VELATO_SHOWCASE_PROGRAMS)("parses and sonifies $title", program => {
@@ -32,6 +33,14 @@ describe("Velato showcase", () => {
     expect(program.source).toContain("STORE_SEVERITY");
     expect(program.source).toContain("STORE_ROUTE");
     expect(program.source).toContain("STORE_SUPPRESS");
+  });
+
+  it("keeps the graph score at exactly one minute of one-beat events", () => {
+    const graphMinute = VELATO_SHOWCASE_PROGRAMS.find(program => program.id === "live-graph-minute");
+    expect(graphMinute).toBeDefined();
+    expect(parseVelatoInstructions(graphMinute!.source)).toHaveLength(100);
+    expect(graphMinute!.tempo).toBe(100);
+    expect(graphMinute!.rhythm).toEqual([1]);
   });
 
   it.each(VELATO_SHOWCASE_PROGRAMS)("exports executable MIDI for $title", program => {
@@ -56,5 +65,11 @@ describe("Velato showcase", () => {
     expect(firstInput?.velocity).toBe(8);
     expect(firstConstant?.operand).toBe("35");
     expect(firstConstant?.velocity).toBe(36);
+  });
+
+  it("transposes low playback notes into a phone-speaker-friendly register", () => {
+    expect(audibleMidi(50)).toBe(50 + PLAYBACK_TRANSPOSE_SEMITONES);
+    expect(audibleMidi(90)).toBe(90);
+    expect(audibleMidi(-3)).toBe(PLAYBACK_TRANSPOSE_SEMITONES);
   });
 });
