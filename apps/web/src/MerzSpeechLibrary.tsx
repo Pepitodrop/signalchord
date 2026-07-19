@@ -1,6 +1,7 @@
 import {useEffect, useState} from "react";
 
 import {MerzSpeechReader} from "./MerzSpeechReader";
+import "./mediaFeatures.css";
 
 const SPEECH_PROGRAMS = [
   {
