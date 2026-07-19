@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SignalChord">
+  <defs>
+    <linearGradient id="bg" x1="7" y1="4" x2="58" y2="61" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A88EFF"/>
+      <stop offset=".52" stop-color="#7658FF"/>
+      <stop offset="1" stop-color="#2D9DEB"/>
+    </linearGradient>
+    <linearGradient id="line" x1="13" y1="42" x2="51" y2="19" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset=".55" stop-color="#DDF7FF"/>
+      <stop offset="1" stop-color="#6EE8C2"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2.4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="17" fill="#0B0D15"/>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#bg)"/>
+  <path d="M14 40.5 24.5 29l11 8.5L50 20" fill="none" stroke="url(#line)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <circle cx="14" cy="40.5" r="4.2" fill="#fff"/>
+  <circle cx="24.5" cy="29" r="4.2" fill="#EAE4FF"/>
+  <circle cx="35.5" cy="37.5" r="4.2" fill="#CFF7FF"/>
+  <circle cx="50" cy="20" r="4.2" fill="#78E8C5"/>
+  <path d="M11 52h42" stroke="#FFFFFF" stroke-opacity=".23" stroke-width="2" stroke-linecap="round"/>
+</svg>
