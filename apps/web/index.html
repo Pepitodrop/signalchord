@@ -8,10 +8,36 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
     <link rel="manifest" href="/site.webmanifest"/>
     <link rel="stylesheet" href="/visual-refresh.css"/>
+    <style>
+      .live-lab-launch {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 1000;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 11px 15px;
+        border: 1px solid rgba(126, 105, 255, .38);
+        border-radius: 999px;
+        color: #f6f4ff;
+        background: linear-gradient(135deg, rgba(128, 102, 255, .94), rgba(55, 146, 232, .94));
+        box-shadow: 0 14px 38px rgba(65, 48, 177, .34);
+        font: 700 .78rem/1 Inter, Aptos, "Segoe UI", system-ui, sans-serif;
+        letter-spacing: .02em;
+        text-decoration: none;
+        backdrop-filter: blur(16px);
+        transition: transform 160ms ease, box-shadow 160ms ease;
+      }
+      .live-lab-launch::before { content: "◉"; color: #bff7e5; text-shadow: 0 0 10px rgba(101, 227, 187, .8); }
+      .live-lab-launch:hover { transform: translateY(-2px); box-shadow: 0 18px 46px rgba(65, 48, 177, .42); }
+      @media (max-width: 620px) { .live-lab-launch { right: 10px; bottom: 10px; padding: 10px 13px; } }
+    </style>
     <title>SignalChord — Connected Intelligence</title>
   </head>
   <body>
     <div id="root"></div>
+    <a class="live-lab-launch" href="/lab.html">Live Lab</a>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
