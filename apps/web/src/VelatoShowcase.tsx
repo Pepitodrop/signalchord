@@ -1,10 +1,14 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from "react";
 
+import {
+  createAudibleMaster,
+  createUnlockedAudioContext,
+  scheduleAudibleTone,
+} from "./browserAudio";
 import {MerzatoStudio} from "./MerzatoStudio";
 import {
   buildVelatoPlaybackEvents,
   encodeVelatoMidi,
-  midiFrequency,
   VELATO_SHOWCASE_PROGRAMS,
   VelatoShowcaseProgram,
 } from "./velatoShowcase";
@@ -80,7 +84,8 @@ function ProgramCard({
 
       <p className="velatoPurpose"><strong>What it does:</strong> {program.purpose}</p>
       <p className="muted velatoPlaybackNote">
-        The note order comes directly from the checked-in Velato source. MIDI banks are rendered as different synth voices, while the downloadable file preserves the real opcode channels, intervals and operands.
+        Playback transposes low notes one octave for phone speakers and adds a quiet octave layer.
+        The exported MIDI retains the exact executable channels, intervals, velocities and operands.
       </p>
 
       <details>
@@ -95,6 +100,7 @@ export function VelatoShowcase() {
   const [revealed, setRevealed] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioError, setAudioError] = useState("");
+  const [volume, setVolume] = useState(0.82);
   const active = useRef<ActivePlayback | null>(null);
 
   const stop = useCallback(() => {
@@ -118,36 +124,23 @@ export function VelatoShowcase() {
     setAudioError("");
 
     try {
-      const context = new AudioContext();
-      if (context.state === "suspended") await context.resume();
-
+      const context = await createUnlockedAudioContext();
       const events = buildVelatoPlaybackEvents(program);
-      const master = context.createGain();
-      master.gain.setValueAtTime(0.13, context.currentTime);
-      master.connect(context.destination);
-
+      const master = createAudibleMaster(context, volume);
       const secondsPerBeat = 60 / program.tempo;
-      let cursor = context.currentTime + 0.06;
+      let cursor = context.currentTime + 0.035;
 
       for (const event of events) {
-        const duration = Math.max(0.045, event.durationBeats * secondsPerBeat);
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        const filter = context.createBiquadFilter();
-
-        oscillator.type = BANK_VOICES[event.bank] ?? "triangle";
-        oscillator.frequency.setValueAtTime(midiFrequency(event.midi), cursor);
-        filter.type = "lowpass";
-        filter.frequency.setValueAtTime(1800 + event.bank * 650, cursor);
-        gain.gain.setValueAtTime(0.0001, cursor);
-        gain.gain.exponentialRampToValueAtTime(0.055 * event.accent, cursor + 0.01);
-        gain.gain.exponentialRampToValueAtTime(0.0001, cursor + duration * 0.9);
-
-        oscillator.connect(filter);
-        filter.connect(gain);
-        gain.connect(master);
-        oscillator.start(cursor);
-        oscillator.stop(cursor + duration);
+        const duration = Math.max(0.075, event.durationBeats * secondsPerBeat);
+        scheduleAudibleTone({
+          context,
+          output: master,
+          midi: event.midi,
+          voice: BANK_VOICES[event.bank] ?? "triangle",
+          start: cursor,
+          duration,
+          accent: event.accent,
+        });
         cursor += duration;
       }
 
@@ -155,14 +148,16 @@ export function VelatoShowcase() {
         void context.close();
         active.current = null;
         setPlayingId(null);
-      }, Math.max(0, (cursor - context.currentTime + 0.08) * 1000));
+      }, Math.max(0, (cursor - context.currentTime + 0.1) * 1000));
 
       active.current = {id: program.id, context, timeout};
       setPlayingId(program.id);
-    } catch {
-      setAudioError("Audio playback is unavailable in this browser. The executable MIDI download still works.");
+    } catch (error) {
+      setAudioError(error instanceof Error
+        ? error.message
+        : "Audio playback is unavailable. Check the device media volume and browser permission.");
     }
-  }, [stop]);
+  }, [stop, volume]);
 
   return (
     <>
@@ -172,7 +167,7 @@ export function VelatoShowcase() {
             <p className="eyebrow">Velato easter egg</p>
             <h2>The policies are also playable scores.</h2>
             <p className="muted">
-              Reveal the five functional programs and hear their actual instruction streams.
+              Reveal the six functional programs and hear their actual instruction streams.
             </p>
           </div>
           <button
@@ -187,6 +182,22 @@ export function VelatoShowcase() {
             {revealed ? "Hide scores" : "♪ Reveal scores"}
           </button>
         </div>
+
+        {revealed && (
+          <label className="velatoVolume">
+            Playback volume
+            <input
+              type="range"
+              min="0.2"
+              max="1"
+              step="0.05"
+              value={volume}
+              onChange={event => setVolume(Number(event.target.value))}
+              aria-label="Velato playback volume"
+            />
+            <span>{Math.round(volume * 100)}%</span>
+          </label>
+        )}
 
         {audioError && <p className="error">{audioError}</p>}
 
