@@ -1,0 +1,17 @@
+{
+  "name": "SignalChord",
+  "short_name": "SignalChord",
+  "description": "Evidence-linked intelligence from connected news signals.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07090f",
+  "theme_color": "#0b0d15",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
