@@ -12,12 +12,16 @@ const memePath = resolve(root, "apps/web/public/programs/merz/meme-cabinet.merz"
 const graphPath = resolve(root, "apps/web/public/programs/merz/graph-growth-briefing.merz");
 const canonicalVelatoPath = resolve(root, "velato/programs/live-graph-minute.vasm");
 const publicVelatoPath = resolve(root, "apps/web/public/programs/velato/live-graph-minute.vasm");
+const labScriptPath = resolve(root, "apps/web/public/lab.js");
+const nginxPath = resolve(root, "infrastructure/docker/web-nginx.conf");
 
-const [memeSource, graphSource, canonicalVelato, publicVelato] = await Promise.all([
+const [memeSource, graphSource, canonicalVelato, publicVelato, labScript, nginx] = await Promise.all([
   readFile(memePath, "utf8"),
   readFile(graphPath, "utf8"),
   readFile(canonicalVelatoPath, "utf8"),
   readFile(publicVelatoPath, "utf8"),
+  readFile(labScriptPath, "utf8"),
+  readFile(nginxPath, "utf8"),
 ]);
 
 const memeProgram = compileMerzSpeech(memeSource, {filename: "meme-cabinet.merz"});
@@ -47,4 +51,13 @@ const velatoInstructions = canonicalVelato
 assert.equal(velatoInstructions.length, 100, "Live Graph Minute must remain exactly 100 instructions");
 assert.equal(velatoInstructions.at(-1), "HALT");
 
-console.log("Creative Merzato and Velato programs validated.");
+// Parse the browser script in CI and enforce the secure external-loading path.
+new Function(labScript);
+assert.match(labScript, /webkitAudioContext/);
+assert.match(labScript, /speechSynthesis/);
+assert.match(labScript, /createDynamicsCompressor/);
+assert.match(nginx, /location = \/lab\.html/);
+assert.match(nginx, /sub_filter '<\/body>' '<script src="\/lab\.js" defer><\/script><\/body>'/);
+assert.doesNotMatch(nginx, /script-src[^;]*unsafe-inline/);
+
+console.log("Creative Merzato, Velato, speech and Live Lab media paths validated.");
