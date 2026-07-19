@@ -71,6 +71,18 @@ CASES = (
         },
         (87, 4, 3, False),
     ),
+    (
+        "live-graph-minute.vasm",
+        {
+            "graph_centrality": 0.8,
+            "novelty": 0.9,
+            "recency": 0.8,
+            "source_diversity": 0.7,
+            "source_trust": 0.9,
+            "contradiction_count": 0,
+        },
+        (80, 3, 6, False),
+    ),
 )
 
 
@@ -99,3 +111,10 @@ def test_showcase_program_is_functional_midi_policy(
         result.routing_code,
         result.suppressed,
     ) == expected
+
+
+def test_live_graph_minute_has_exactly_one_hundred_executable_instructions() -> None:
+    source = (PROGRAM_DIRECTORY / "live-graph-minute.vasm").read_text(encoding="utf-8")
+    assembly_ir = mod.parse_assembly(source)
+
+    assert len(assembly_ir) == 100

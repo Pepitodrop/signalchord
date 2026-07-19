@@ -24,8 +24,9 @@ These pieces are both musical instruction sequences and real SignalChord policie
 | [`contradiction-canon.vasm`](contradiction-canon.vasm) | Original interlocking canon-like comparison figures | Detects contradiction-heavy stories that deserve investigation and suppresses unsupported noise. | `5` contradiction review |
 | [`source-trust-nocturne.vasm`](source-trust-nocturne.vasm) | Original restrained nocturne contour | Acts as a source-quality gate using trust, corroboration, diversity and recency. | `2` trusted-source review |
 | [`novelty-rondo.vasm`](novelty-rondo.vasm) | Original returning novelty-recency motif | Detects emerging stories with relevant entities and graph position. | `3` discovery |
+| [`live-graph-minute.vasm`](live-graph-minute.vasm) | Original one-minute graph pulse at 100 BPM | Calculates graph momentum from centrality, novelty, recency and diversity; routes mature graph signals and suppresses low-trust or contradiction-heavy material. | `6` graph momentum |
 
-The first two pieces use only broad genre and rhythmic characteristics requested for the showcase. They do not reproduce the melody, harmony or arrangement of an existing copyrighted song.
+The first two pieces use only broad genre and rhythmic characteristics requested for the showcase. They do not reproduce the melody, harmony or arrangement of an existing copyrighted song. `Live Graph Minute` contains exactly 100 executable instructions; the Live Lab plays one instruction per beat at 100 BPM for an approximately one-minute performance.
 
 ## Policy Studio playback easter egg
 
@@ -38,6 +39,8 @@ Open **Policy Studio** in the web application and select **♪ Reveal scores**. 
 - the checked-in `.vasm` source in an expandable panel.
 
 The browser playback is an audible interpretation of the same instructions. The downloaded MIDI remains machine-executable by the constrained Velato engine rather than being a separate decorative audio asset.
+
+The separate authenticated **Live Lab** at `/lab.html` exposes `Live Graph Minute`, its source and its complete approximately one-minute Web Audio performance alongside tenant-scoped graph-growth and pipeline visualizations.
 
 ## Instruction banks
 

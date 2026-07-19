@@ -19,8 +19,9 @@ The reference article-to-alert flow includes:
 7. Rails identity, tenancy, RBAC, sources, watchlists, alerts and audit APIs.
 8. Deterministic Velato-compatible policy evaluation.
 9. A browser-local [Merzato](https://github.com/Pepitodrop/merzato-lang) Policy Studio with five bounded features: Assembly execution, executable Piet/SVG artwork compilation, alert triage scoring, watchlist routing and contradiction suppression.
-10. React analyst UI, Expo mobile client and an authenticated realtime gateway.
-11. Docker Compose integration tests and Helm charts for the application and a single-server community stack.
+10. An authenticated Live Intelligence Lab with tenant-scoped graph growth, an API-observed Kafka workflow pulse, real `.merz` speech programs and a functional one-minute Velato score.
+11. React analyst UI, Expo mobile client and an authenticated realtime gateway.
+12. Docker Compose integration tests and Helm charts for the application and a single-server community stack.
 
 The verified path uses its own graph projector and versioned Protobuf contracts. It does not require Confluent Schema Registry, Kafka Connect, a proprietary LLM API, or another paid hosted service.
 
@@ -68,7 +69,7 @@ Its main features are:
 2. **Deterministic auditability:** MIDI and `.vasm` source compile into the same sealed stack-machine IR with static analysis, source/IR hashes and reproducible execution traces.
 3. **Functional policy outputs:** programs calculate `alert_score`, `severity_code`, `routing_code` and `suppressed`; they cannot access the filesystem, network or shell and cannot create unbounded loops.
 
-Five checked-in musical programs provide distinct production functions:
+Six checked-in musical programs provide distinct production functions:
 
 | Program | Musical direction | Function in SignalChord |
 | --- | --- | --- |
@@ -77,8 +78,9 @@ Five checked-in musical programs provide distinct production functions:
 | [`Contradiction Canon`](velato/programs/contradiction-canon.vasm) | Original interlocking canon-like figures | Detects contradiction-heavy stories and routes them to investigation code `5`. |
 | [`Source Trust Nocturne`](velato/programs/source-trust-nocturne.vasm) | Original restrained nocturne contour | Operates as a source-quality gate and routes highly trusted material to code `2`. |
 | [`Novelty Rondo`](velato/programs/novelty-rondo.vasm) | Original returning novelty-recency motif | Finds emerging stories and routes strong discoveries to code `3`. |
+| [`Live Graph Minute`](velato/programs/live-graph-minute.vasm) | Original 100-instruction graph pulse at 100 BPM | Calculates graph momentum, derives severity, routes mature graph signals to code `6` and suppresses low-trust or contradiction-heavy material. |
 
-The two requested stylistic showcase pieces use broad genre characteristics only and do not reproduce an existing song's melody, harmony or arrangement. Every program is tested by compiling its assembly to MIDI, decoding the MIDI back to IR and executing it against representative SignalChord inputs. See [Velato MIDI policies](velato/programs/README.md).
+The two requested stylistic showcase pieces use broad genre characteristics only and do not reproduce an existing song's melody, harmony or arrangement. Every program is tested by compiling its assembly to MIDI, decoding the MIDI back to IR and executing it against representative SignalChord inputs. `Live Graph Minute` additionally has an exact 100-instruction test and an approximately one-minute browser performance. See [Velato MIDI policies](velato/programs/README.md).
 
 ## Merzato multimodal policy programming
 
@@ -94,7 +96,15 @@ Five Merzato features are available:
 
 The three SignalChord decision programs compile their bounded inputs into immutable Merzato constants and expose the shared policy contract through VM registers: `r10` is `alert_score`, `r11` is `severity_code`, `r12` is `routing_code` and `r13` is `suppressed`. Their generated Assembly and validated instruction streams remain visible in Policy Studio for auditability.
 
+Two additional checked-in speech examples demonstrate the actual `.merz` profile: [`meme-cabinet.merz`](apps/web/public/programs/merz/meme-cabinet.merz) uses every documented meme alias or marker, arithmetic, registers, conditional control flow and a callable `helfer` function; [`graph-growth-briefing.merz`](apps/web/public/programs/merz/graph-growth-briefing.merz) calculates a safe aggregate graph-momentum score through a callable `graph_score` function. These are fictional satire programs, not quotation or impersonation claims.
+
 Only two local MerzScript phrases are enabled: `THE CRITIC SAYS` writes to the studio output and `THE PERFORMANCE IS OVER` halts execution. All other host phrases fail closed. Vendored source provenance and the MIT licence are retained under [`apps/web/src/vendor/merzato-lang`](apps/web/src/vendor/merzato-lang).
+
+## Live Intelligence Lab
+
+After signing in, open `/lab.html` or select **Live Lab** in the web interface. The lab visualizes the authenticated tenant's graph projection and API-observed article-to-alert progress, displays graph growth over time, listens to the existing authenticated realtime stream and exposes the creative Merzato and Velato sources.
+
+The lab does not connect directly to Neo4j or Kafka. It does not expose database or broker credentials, raw Kafka payloads, consumer-group administration, complete graph properties or cross-tenant data. See [Live Intelligence Lab](docs/live-intelligence-lab.md).
 
 ## Quick start
 
@@ -139,6 +149,7 @@ See [Single-server Kubernetes](docs/single-server-kubernetes.md), [Deployment](d
 - `apps/` — web, mobile and Rails control plane.
 - `apps/web/src/vendor/merzato-lang/` — pinned Merzato assembler, validator, error and speech-compiler source plus the MIT licence used by Policy Studio.
 - `apps/web/src/merzatoCorePolicies.ts` — three bounded Merzato speech programs for triage, routing and contradiction gating.
+- `apps/web/public/programs/` — downloadable real `.merz` examples and the public mirror of the one-minute Velato source.
 - `services/` — Go and Python streaming components.
 - `packages/` — TypeScript clients, domain types and event schemas.
 - `graph/` — Neo4j constraints, queries and fixtures.
