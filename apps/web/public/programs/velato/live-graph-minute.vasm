@@ -1,6 +1,14 @@
-# Public web mirror of velato/programs/live-graph-minute.vasm
+# Live Graph Minute
+#
 # Original one-minute executable Velato policy score.
 # At 100 BPM with one beat per instruction, the 100-instruction stream lasts about 60 seconds.
+#
+# Operational function:
+# - calculate a graph momentum score from centrality, novelty, recency and source diversity;
+# - derive severity from the score;
+# - route mature graph signals to routing code 6;
+# - suppress low-trust or heavily contradicted material;
+# - use NOP instructions as audible, executable rhythmic space without changing policy state.
 
 LOAD_INPUT graph_centrality
 PUSH_CONST 35
