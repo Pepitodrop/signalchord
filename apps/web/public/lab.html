@@ -33,85 +33,113 @@
       font-family: Inter, Aptos, "Segoe UI", system-ui, sans-serif;
     }
     body::before {
-      position: fixed; inset: 0; pointer-events: none; content: ""; opacity: .35;
-      background-image: linear-gradient(rgba(160,175,220,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(160,175,220,.035) 1px,transparent 1px);
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      content: "";
+      opacity: .35;
+      background-image:
+        linear-gradient(rgba(160, 175, 220, .035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(160, 175, 220, .035) 1px, transparent 1px);
       background-size: 46px 46px;
       mask-image: linear-gradient(to bottom, black, transparent 88%);
     }
     a { color: inherit; }
     button, input { font: inherit; }
     button {
-      cursor: pointer; color: #f5f3ff; border: 1px solid var(--line); border-radius: 12px;
-      background: rgba(255,255,255,.045); padding: .72rem 1rem;
+      cursor: pointer;
+      color: #f5f3ff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .045);
+      padding: .72rem 1rem;
     }
-    button:hover { border-color: rgba(128,102,255,.55); background: rgba(128,102,255,.13); }
-    button.primary { border: 0; background: linear-gradient(135deg,#947cff,#6550ef 62%,#398ee9); box-shadow: 0 12px 30px rgba(85,63,215,.28); }
+    button:hover { border-color: rgba(128, 102, 255, .55); background: rgba(128, 102, 255, .13); }
+    button.primary { border: 0; background: linear-gradient(135deg, #947cff, #6550ef 62%, #398ee9); box-shadow: 0 12px 30px rgba(85, 63, 215, .28); }
     button:disabled { opacity: .45; cursor: not-allowed; }
     input {
-      width: min(100%, 360px); color: white; border: 1px solid var(--line); border-radius: 12px;
-      background: rgba(3,5,11,.55); padding: .78rem .9rem; outline: none;
+      width: min(100%, 360px);
+      color: white;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(3, 5, 11, .55);
+      padding: .78rem .9rem;
+      outline: none;
     }
-    input:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(128,102,255,.14); }
+    input:focus { border-color: var(--violet); box-shadow: 0 0 0 3px rgba(128, 102, 255, .14); }
     .wrap { position: relative; width: min(1580px, calc(100% - 34px)); margin: 0 auto; padding: 24px 0 60px; }
     header {
-      display: flex; align-items: center; justify-content: space-between; gap: 18px;
-      padding: 22px 24px; border: 1px solid var(--line); border-radius: 22px;
-      background: linear-gradient(115deg,rgba(25,28,45,.9),rgba(11,14,23,.82));
-      box-shadow: 0 28px 80px rgba(0,0,0,.32); backdrop-filter: blur(22px);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 22px 24px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: linear-gradient(115deg, rgba(25, 28, 45, .9), rgba(11, 14, 23, .82));
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .32);
+      backdrop-filter: blur(22px);
     }
     .brand { display: flex; align-items: center; gap: 14px; }
-    .logo { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px; background: linear-gradient(135deg,#a28bff,#6d50ff 56%,#3aa2ed); box-shadow: 0 12px 30px rgba(91,67,231,.38); font-weight: 900; }
+    .logo { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px; background: linear-gradient(135deg, #a28bff, #6d50ff 56%, #3aa2ed); box-shadow: 0 12px 30px rgba(91, 67, 231, .38); font-weight: 900; }
     .eyebrow { margin: 0 0 5px; color: #9d8bff; font-size: .66rem; font-weight: 900; letter-spacing: .18em; text-transform: uppercase; }
-    h1,h2,h3,p { margin-top: 0; }
-    h1 { margin-bottom: 0; font-size: clamp(1.45rem,3vw,2.45rem); letter-spacing: -.045em; }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 { margin-bottom: 0; font-size: clamp(1.45rem, 3vw, 2.45rem); letter-spacing: -.045em; }
     h2 { font-size: 1.08rem; }
     .muted { color: var(--muted); line-height: 1.55; }
-    .back { text-decoration: none; padding: .7rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(255,255,255,.035); }
+    .back { text-decoration: none; padding: .7rem 1rem; border: 1px solid var(--line); border-radius: 12px; background: rgba(255, 255, 255, .035); }
     .security {
-      display: flex; align-items: center; gap: 10px; margin: 16px 0; padding: 12px 15px;
-      border: 1px solid rgba(101,227,187,.2); border-radius: 14px; color: #bdf4e2; background: rgba(40,150,115,.09); font-size: .88rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 16px 0;
+      padding: 12px 15px;
+      border: 1px solid rgba(101, 227, 187, .2);
+      border-radius: 14px;
+      color: #bdf4e2;
+      background: rgba(40, 150, 115, .09);
+      font-size: .88rem;
     }
     .security::before { content: "●"; color: var(--mint); text-shadow: 0 0 12px var(--mint); }
-    .grid { display: grid; grid-template-columns: minmax(0,1.25fr) minmax(320px,.75fr); gap: 16px; }
-    .card { border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg,var(--panel),var(--panel-2)); box-shadow: 0 24px 70px rgba(0,0,0,.24); overflow: hidden; }
+    .grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 16px; }
+    .card { border: 1px solid var(--line); border-radius: 20px; background: linear-gradient(145deg, var(--panel), var(--panel-2)); box-shadow: 0 24px 70px rgba(0, 0, 0, .24); overflow: hidden; }
     .cardHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 20px 0; }
     .cardBody { padding: 18px 20px 20px; }
     .controls { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
-    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 9px; margin: 14px 0; }
-    .metric { padding: 13px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.025); }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin: 14px 0; }
+    .metric { padding: 13px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, .025); }
     .metric strong { display: block; font-size: 1.35rem; }
     .metric small { color: var(--muted); }
-    #graph { width: 100%; height: 480px; border-top: 1px solid var(--line); background: radial-gradient(circle at 50% 50%,rgba(112,83,255,.08),transparent 55%); }
-    #graph line { stroke: rgba(112,127,171,.42); stroke-width: 1.5; marker-end: url(#arrow); }
-    #graph .edgeLabel { fill: #808ba6; font-size: 9px; }
-    #graph circle { fill: #7f64ff; stroke: rgba(222,216,255,.72); stroke-width: 1.5; filter: drop-shadow(0 0 10px rgba(123,97,255,.55)); }
+    #graph { width: 100%; height: 480px; border-top: 1px solid var(--line); background: radial-gradient(circle at 50% 50%, rgba(112, 83, 255, .08), transparent 55%); }
+    #graph line { stroke: rgba(112, 127, 171, .42); stroke-width: 1.5; marker-end: url(#arrow); }
+    #graph circle { fill: #7f64ff; stroke: rgba(222, 216, 255, .72); stroke-width: 1.5; filter: drop-shadow(0 0 10px rgba(123, 97, 255, .55)); }
     #graph circle.fresh { animation: nodePulse 1.6s ease-out 2; }
     #graph text.nodeLabel { fill: #eef1ff; font-size: 11px; font-weight: 700; text-anchor: middle; paint-order: stroke; stroke: #080a11; stroke-width: 4px; }
     @keyframes nodePulse { 0% { r: 8; } 45% { r: 17; } 100% { r: 11; } }
     .pipeline { display: grid; gap: 7px; }
-    .stage { position: relative; display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.025); transition: .25s ease; }
-    .stage::before { display: grid; place-items: center; width: 28px; height: 28px; content: attr(data-index); border-radius: 9px; color: #9ba5bd; background: rgba(255,255,255,.045); }
+    .stage { position: relative; display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; padding: 11px 12px; border: 1px solid var(--line); border-radius: 13px; background: rgba(255, 255, 255, .025); transition: .25s ease; }
+    .stage::before { display: grid; place-items: center; width: 28px; height: 28px; content: attr(data-index); border-radius: 9px; color: #9ba5bd; background: rgba(255, 255, 255, .045); }
     .stage b { font-size: .88rem; }
     .stage small { color: var(--muted); }
-    .stage.active { border-color: rgba(101,227,187,.28); background: rgba(50,176,137,.075); }
-    .stage.active::before { color: #d8fff2; background: rgba(52,190,147,.2); box-shadow: 0 0 16px rgba(101,227,187,.18); }
+    .stage.active { border-color: rgba(101, 227, 187, .28); background: rgba(50, 176, 137, .075); }
+    .stage.active::before { color: #d8fff2; background: rgba(52, 190, 147, .2); box-shadow: 0 0 16px rgba(101, 227, 187, .18); }
     .stage.pulse { animation: stagePulse .9s ease; }
-    @keyframes stagePulse { 50% { transform: translateX(4px); border-color: rgba(89,217,255,.65); box-shadow: 0 0 25px rgba(89,217,255,.13); } }
-    .progress { height: 8px; margin: 14px 0; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.05); }
-    .progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--violet),var(--cyan),var(--mint)); transition: width .5s ease; }
-    .growth { max-height: 155px; overflow: auto; font: .76rem/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; color: #b8c1d8; }
-    .growth div { border-bottom: 1px solid rgba(255,255,255,.04); padding: 4px 0; }
+    @keyframes stagePulse { 50% { transform: translateX(4px); border-color: rgba(89, 217, 255, .65); box-shadow: 0 0 25px rgba(89, 217, 255, .13); } }
+    .progress { height: 8px; margin: 14px 0; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .05); }
+    .progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--violet), var(--cyan), var(--mint)); transition: width .5s ease; }
+    .growth { max-height: 155px; overflow: auto; font: .76rem/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; color: #b8c1d8; }
+    .growth div { border-bottom: 1px solid rgba(255, 255, 255, .04); padding: 4px 0; }
     .codeGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
-    pre { max-height: 430px; overflow: auto; margin: 0; padding: 16px; border-top: 1px solid var(--line); color: #cbd2e8; background: rgba(2,4,9,.5); font: .76rem/1.55 ui-monospace,SFMono-Regular,Consolas,monospace; white-space: pre; }
+    pre { max-height: 430px; overflow: auto; margin: 0; padding: 16px; border-top: 1px solid var(--line); color: #cbd2e8; background: rgba(2, 4, 9, .5); font: .76rem/1.55 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; }
     .codeActions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 20px 18px; }
     .songStatus { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 12px; padding: 12px 20px 18px; }
-    .songProgress { height: 10px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.06); }
-    .songProgress span { display:block; height:100%; width:0; background:linear-gradient(90deg,#9b82ff,#50d5ff,#64e3ba); }
-    #currentOp { color: var(--muted); font: .75rem ui-monospace,monospace; }
-    .error { display:none; margin: 16px 0; padding: 13px 15px; border: 1px solid rgba(255,105,124,.28); border-radius: 14px; color: #ffb7c1; background: rgba(177,39,62,.1); }
-    @media (max-width: 980px) { .grid,.codeGrid { grid-template-columns:1fr; } #graph { height:390px; } .metrics { grid-template-columns:repeat(2,1fr); } }
-    @media (max-width: 620px) { .wrap { width:min(100% - 18px,1580px); padding-top:9px; } header { align-items:flex-start; padding:17px; } .back { font-size:.75rem; } .cardHead,.cardBody { padding-left:15px; padding-right:15px; } #graph { height:330px; } }
-    @media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; scroll-behavior:auto!important; } }
+    .songProgress { height: 10px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .06); }
+    .songProgress span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #9b82ff, #50d5ff, #64e3ba); }
+    #currentOp { grid-column: 1 / -1; color: var(--muted); font: .75rem ui-monospace, monospace; }
+    .error { display: none; margin: 16px 0; padding: 13px 15px; border: 1px solid rgba(255, 105, 124, .28); border-radius: 14px; color: #ffb7c1; background: rgba(177, 39, 62, .1); }
+    @media (max-width: 980px) { .grid, .codeGrid { grid-template-columns: 1fr; } #graph { height: 390px; } .metrics { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 620px) { .wrap { width: min(100% - 18px, 1580px); padding-top: 9px; } header { align-items: flex-start; padding: 17px; } .back { font-size: .75rem; } .cardHead, .cardBody { padding-left: 15px; padding-right: 15px; } #graph { height: 330px; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; } }
   </style>
 </head>
 <body>
@@ -161,12 +189,24 @@
   </div>
 
   <script>
+    "use strict";
+
     const SESSION_KEY = "signalchord.session.v1";
-    const session = (() => { try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); } catch { return null; } })();
+    const session = (() => {
+      try { return JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); }
+      catch { return null; }
+    })();
     const token = session?.access_token || "";
-    const state = { nodes: [], relationships: [], sources: [], alerts: [], liveEvents: 0, stream: false, auto: true, timer: null, history: [], previousNodeIds: new Set(), audio: null };
+    const state = {
+      nodes: [], relationships: [], sources: [], alerts: [], liveEvents: 0,
+      stream: false, auto: true, history: [], previousNodeIds: new Set(), audio: null,
+    };
     const $ = id => document.getElementById(id);
-    const showError = message => { const el = $("error"); el.textContent = message; el.style.display = message ? "block" : "none"; };
+    const showError = message => {
+      const element = $("error");
+      element.textContent = message;
+      element.style.display = message ? "block" : "none";
+    };
     const headers = () => ({Accept: "application/json", Authorization: `Bearer ${token}`});
     const safeFetch = async path => {
       const response = await fetch(path, {headers: headers()});
@@ -174,7 +214,9 @@
       return response.json();
     };
 
-    if (!token) showError("No SignalChord session is available. Sign in through the analyst workspace first, then reopen Live Lab.");
+    if (!token) {
+      showError("No SignalChord session is available. Sign in through the analyst workspace first, then reopen Live Lab.");
+    }
 
     const stages = [
       ["Source registry", "permitted sources"],
@@ -187,11 +229,19 @@
       ["Realtime SSE", "authenticated analyst delivery"],
     ];
     $("pipeline").replaceChildren(...stages.map(([title, detail], index) => {
-      const row = document.createElement("div"); row.className = "stage"; row.dataset.index = String(index + 1);
-      const spacer = document.createElement("span");
-      const text = document.createElement("span"); const b = document.createElement("b"); b.textContent = title; const small = document.createElement("small"); small.textContent = detail; text.append(b, document.createElement("br"), small);
-      const status = document.createElement("small"); status.textContent = "waiting";
-      row.append(spacer, text, status); return row;
+      const row = document.createElement("div");
+      row.className = "stage";
+      row.dataset.index = String(index + 1);
+      const text = document.createElement("span");
+      const heading = document.createElement("b");
+      heading.textContent = title;
+      const description = document.createElement("small");
+      description.textContent = detail;
+      text.append(heading, document.createElement("br"), description);
+      const status = document.createElement("small");
+      status.textContent = "waiting";
+      row.append(text, status);
+      return row;
     }));
 
     function pipelineState() {
@@ -209,36 +259,72 @@
 
     function pulsePipeline() {
       document.querySelectorAll(".stage").forEach((row, index) => {
-        window.setTimeout(() => { row.classList.remove("pulse"); void row.offsetWidth; row.classList.add("pulse"); }, index * 85);
+        window.setTimeout(() => {
+          row.classList.remove("pulse");
+          void row.offsetWidth;
+          row.classList.add("pulse");
+        }, index * 85);
       });
     }
 
     function drawGraph() {
-      const svg = $("graph");
-      const width = 900, height = 480, cx = width / 2, cy = height / 2;
+      const width = 900;
+      const height = 480;
+      const centerX = width / 2;
+      const centerY = height / 2;
       const nodes = state.nodes.slice(0, 80);
-      const nodeMap = new Map();
+      const positions = new Map();
+
       nodes.forEach((node, index) => {
         const ring = index === 0 ? 0 : 145 + Math.floor((index - 1) / 18) * 85;
         const slot = index === 0 ? 0 : (index - 1) % 18;
         const angle = index === 0 ? 0 : (slot / 18) * Math.PI * 2 - Math.PI / 2;
-        nodeMap.set(node.stable_id, {x: cx + Math.cos(angle) * ring, y: cy + Math.sin(angle) * ring, node});
+        positions.set(node.stable_id, {
+          x: centerX + Math.cos(angle) * ring,
+          y: centerY + Math.sin(angle) * ring,
+        });
       });
-      const edgeGroup = $("edges"), nodeGroup = $("nodes"); edgeGroup.replaceChildren(); nodeGroup.replaceChildren();
-      state.relationships.slice(0, 140).forEach(rel => {
-        const source = nodeMap.get(rel.source), target = nodeMap.get(rel.target); if (!source || !target) return;
+
+      const edgeGroup = $("edges");
+      const nodeGroup = $("nodes");
+      edgeGroup.replaceChildren();
+      nodeGroup.replaceChildren();
+
+      state.relationships.slice(0, 140).forEach(relationship => {
+        const source = positions.get(relationship.source);
+        const target = positions.get(relationship.target);
+        if (!source || !target) return;
         const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("x1", source.x); line.setAttribute("y1", source.y); line.setAttribute("x2", target.x); line.setAttribute("y2", target.y); edgeGroup.append(line);
+        line.setAttribute("x1", source.x);
+        line.setAttribute("y1", source.y);
+        line.setAttribute("x2", target.x);
+        line.setAttribute("y2", target.y);
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = relationship.type || "relationship";
+        line.append(title);
+        edgeGroup.append(line);
       });
-      nodes.forEach(item => {
-        const point = nodeMap.get(item.stable_id); if (!point) return;
+
+      nodes.forEach((node, index) => {
+        const point = positions.get(node.stable_id);
+        if (!point) return;
         const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
-        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle"); circle.setAttribute("cx", point.x); circle.setAttribute("cy", point.y); circle.setAttribute("r", item === nodes[0] ? 15 : 11);
-        if (!state.previousNodeIds.has(item.stable_id)) circle.classList.add("fresh");
-        const label = document.createElementNS("http://www.w3.org/2000/svg", "text"); label.classList.add("nodeLabel"); label.setAttribute("x", point.x); label.setAttribute("y", point.y + 28); label.textContent = String(item.display_name || item.title || item.label || item.stable_id).slice(0, 36);
-        const title = document.createElementNS("http://www.w3.org/2000/svg", "title"); title.textContent = item.stable_id;
-        group.append(circle, label, title); nodeGroup.append(group);
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("cx", point.x);
+        circle.setAttribute("cy", point.y);
+        circle.setAttribute("r", index === 0 ? 15 : 11);
+        if (!state.previousNodeIds.has(node.stable_id)) circle.classList.add("fresh");
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.classList.add("nodeLabel");
+        label.setAttribute("x", point.x);
+        label.setAttribute("y", point.y + 28);
+        label.textContent = String(node.display_name || node.title || node.label || node.stable_id).slice(0, 36);
+        const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+        title.textContent = node.stable_id;
+        group.append(circle, label, title);
+        nodeGroup.append(group);
       });
+
       state.previousNodeIds = new Set(nodes.map(node => node.stable_id));
     }
 
@@ -246,7 +332,11 @@
       const item = `${new Date().toLocaleTimeString()} · ${state.nodes.length} nodes · ${state.relationships.length} relationships · ${state.alerts.length} alerts`;
       if (state.history[0] !== item) state.history.unshift(item);
       state.history = state.history.slice(0, 18);
-      $("growth").replaceChildren(...state.history.map(text => { const row = document.createElement("div"); row.textContent = text; return row; }));
+      $("growth").replaceChildren(...state.history.map(text => {
+        const row = document.createElement("div");
+        row.textContent = text;
+        return row;
+      }));
     }
 
     async function refresh() {
@@ -255,13 +345,27 @@
       const id = $("entityId").value.trim() || "company:acme";
       try {
         const [graph, sources, alerts] = await Promise.all([
-          safeFetch(`/api/v1/entities/${encodeURIComponent(id)}/graph`), safeFetch("/api/v1/sources"), safeFetch("/api/v1/alerts")
+          safeFetch(`/api/v1/entities/${encodeURIComponent(id)}/graph`),
+          safeFetch("/api/v1/sources"),
+          safeFetch("/api/v1/alerts"),
         ]);
-        const grew = graph.nodes.length > state.nodes.length || graph.relationships.length > state.relationships.length || alerts.length > state.alerts.length;
-        state.nodes = graph.nodes || []; state.relationships = graph.relationships || []; state.sources = sources || []; state.alerts = alerts || [];
-        $("nodeCount").textContent = state.nodes.length; $("edgeCount").textContent = state.relationships.length; $("alertCount").textContent = state.alerts.length;
-        drawGraph(); pipelineState(); addHistory(); if (grew) pulsePipeline();
-      } catch (error) { showError(`Live Lab could not refresh: ${error.message}`); }
+        const grew = graph.nodes.length > state.nodes.length
+          || graph.relationships.length > state.relationships.length
+          || alerts.length > state.alerts.length;
+        state.nodes = graph.nodes || [];
+        state.relationships = graph.relationships || [];
+        state.sources = sources || [];
+        state.alerts = alerts || [];
+        $("nodeCount").textContent = state.nodes.length;
+        $("edgeCount").textContent = state.relationships.length;
+        $("alertCount").textContent = state.alerts.length;
+        drawGraph();
+        pipelineState();
+        addHistory();
+        if (grew) pulsePipeline();
+      } catch (error) {
+        showError(`Live Lab could not refresh: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     async function connectRealtime() {
@@ -269,72 +373,172 @@
       try {
         const response = await fetch("/events", {headers: headers()});
         if (!response.ok || !response.body) throw new Error(`realtime returned ${response.status}`);
-        state.stream = true; $("streamState").textContent = "live"; $("streamState").style.color = "var(--mint)"; pipelineState();
-        const reader = response.body.getReader(), decoder = new TextDecoder(); let buffer = "";
+        state.stream = true;
+        $("streamState").textContent = "live";
+        $("streamState").style.color = "var(--mint)";
+        pipelineState();
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
         while (true) {
-          const {done, value} = await reader.read(); if (done) break;
-          buffer += decoder.decode(value, {stream: true}); const frames = buffer.split("\n\n"); buffer = frames.pop() || "";
-          for (const frame of frames) if (frame.trim()) { state.liveEvents += 1; $("eventCount").textContent = state.liveEvents; pulsePipeline(); void refresh(); }
+          const {done, value} = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, {stream: true});
+          const frames = buffer.split("\n\n");
+          buffer = frames.pop() || "";
+          for (const frame of frames) {
+            if (!frame.trim()) continue;
+            state.liveEvents += 1;
+            $("eventCount").textContent = state.liveEvents;
+            pulsePipeline();
+            void refresh();
+          }
         }
       } catch {
-        state.stream = false; $("streamState").textContent = "polling"; $("streamState").style.color = "var(--amber)"; pipelineState();
+        state.stream = false;
+        $("streamState").textContent = "polling";
+        $("streamState").style.color = "var(--amber)";
+        pipelineState();
         window.setTimeout(connectRealtime, 5000);
       }
     }
 
     $("refresh").addEventListener("click", refresh);
-    $("auto").addEventListener("click", () => { state.auto = !state.auto; $("auto").textContent = `Auto refresh: ${state.auto ? "on" : "off"}`; });
-    state.timer = window.setInterval(() => { if (state.auto) void refresh(); }, 5000);
+    $("entityId").addEventListener("keydown", event => {
+      if (event.key === "Enter") void refresh();
+    });
+    $("auto").addEventListener("click", () => {
+      state.auto = !state.auto;
+      $("auto").textContent = `Auto refresh: ${state.auto ? "on" : "off"}`;
+    });
+    window.setInterval(() => { if (state.auto) void refresh(); }, 5000);
 
     async function loadSources() {
-      const [merz, velato] = await Promise.all([
-        fetch("/programs/merz/meme-cabinet.merz").then(r => r.text()),
-        fetch("/programs/velato/live-graph-minute.vasm").then(r => r.text()),
-      ]);
-      $("merzSource").textContent = merz; $("velatoSource").textContent = velato;
+      try {
+        const [merz, velato] = await Promise.all([
+          fetch("/programs/merz/meme-cabinet.merz").then(response => {
+            if (!response.ok) throw new Error("Merzato source unavailable");
+            return response.text();
+          }),
+          fetch("/programs/velato/live-graph-minute.vasm").then(response => {
+            if (!response.ok) throw new Error("Velato source unavailable");
+            return response.text();
+          }),
+        ]);
+        $("merzSource").textContent = merz;
+        $("velatoSource").textContent = velato;
+      } catch (error) {
+        showError(error instanceof Error ? error.message : String(error));
+      }
     }
-    document.querySelectorAll("[data-copy]").forEach(button => button.addEventListener("click", async () => {
-      await navigator.clipboard.writeText($(button.dataset.copy).textContent); const previous = button.textContent; button.textContent = "Copied"; setTimeout(() => button.textContent = previous, 1200);
-    }));
 
-    const banks = ["triangle","sine","square","sawtooth"];
-    const bankOps = [
-      ["HALT","PUSH_CONST","LOAD_INPUT","ADD","SUB","MUL","GT","SELECT","STORE_SCORE","STORE_SEVERITY","STORE_ROUTE","STORE_SUPPRESS"],
-      ["MIN","MAX","DIV","MOD","NEG","ABS","CLAMP","FLOOR","CEIL","ROUND","POW","SQRT"],
-      ["EQ","NE","LT","LTE","GTE","AND","OR","XOR","NOT","IS_ZERO","BETWEEN","SIGN"],
-      ["DUP","SWAP","OVER","DROP","LOAD_LOCAL","STORE_LOCAL","NOP","STACK_DEPTH","LOAD_SCORE","LOAD_SEVERITY","LOAD_ROUTE","LOAD_SUPPRESS"],
-    ];
-    const encoding = new Map(); bankOps.forEach((ops, bank) => ops.forEach((op, interval) => encoding.set(op,{bank,interval})));
-    const parseOps = text => text.split(/\r?\n/).map(line => line.replace(/#.*$/,"").trim()).filter(Boolean).map(line => line.split(/\s+/)[0]);
-    const stopSong = () => {
-      if (state.audio) { state.audio.oscillators.forEach(o => { try { o.stop(); } catch {} }); state.audio.context.close(); cancelAnimationFrame(state.audio.frame); }
-      state.audio = null; $("playSong").disabled = false; $("stopSong").disabled = true; $("songBar").style.width = "0"; $("songTime").textContent = "0:00 / 1:00"; $("currentOp").textContent = "ready";
-    };
-    $("stopSong").addEventListener("click", stopSong);
-    $("playSong").addEventListener("click", async () => {
-      stopSong();
-      const operations = parseOps($("velatoSource").textContent); if (!operations.length) return;
-      const context = new AudioContext(); if (context.state === "suspended") await context.resume();
-      const master = context.createGain(); master.gain.value = .105; master.connect(context.destination);
-      const start = context.currentTime + .08, beat = .6, oscillators = [];
-      operations.forEach((op,index) => {
-        const code = encoding.get(op) || {bank:3,interval:6}; const when = start + index * beat; const duration = beat * .86;
-        const oscillator = context.createOscillator(), gain = context.createGain(), filter = context.createBiquadFilter();
-        oscillator.type = banks[code.bank] || "triangle"; oscillator.frequency.value = 440 * 2 ** (((50 + code.interval) - 69) / 12);
-        filter.type = "lowpass"; filter.frequency.value = 1600 + code.bank * 650; gain.gain.setValueAtTime(.0001,when); gain.gain.exponentialRampToValueAtTime(index % 4 === 0 ? .055 : .035,when+.02); gain.gain.exponentialRampToValueAtTime(.0001,when+duration);
-        oscillator.connect(filter); filter.connect(gain); gain.connect(master); oscillator.start(when); oscillator.stop(when+duration); oscillators.push(oscillator);
+    document.querySelectorAll("[data-copy]").forEach(button => {
+      button.addEventListener("click", async () => {
+        await navigator.clipboard.writeText($(button.dataset.copy).textContent);
+        const previous = button.textContent;
+        button.textContent = "Copied";
+        window.setTimeout(() => { button.textContent = previous; }, 1200);
       });
-      $("playSong").disabled = true; $("stopSong").disabled = false;
-      const tick = () => {
-        const elapsed = Math.max(0, context.currentTime - start), total = operations.length * beat, index = Math.min(operations.length - 1, Math.floor(elapsed / beat));
-        $("songBar").style.width = `${Math.min(100, elapsed / total * 100)}%`; $("songTime").textContent = `0:${String(Math.min(59,Math.floor(elapsed))).padStart(2,"0")} / 1:00`; $("currentOp").textContent = operations[index] || "complete";
-        if (elapsed >= total) { stopSong(); return; }
-        state.audio.frame = requestAnimationFrame(tick);
-      };
-      state.audio = {context, oscillators, frame: requestAnimationFrame(tick)};
     });
 
-    void loadSources(); void refresh(); void connectRealtime();
+    const voices = ["triangle", "sine", "square", "sawtooth"];
+    const bankOperations = [
+      ["HALT", "PUSH_CONST", "LOAD_INPUT", "ADD", "SUB", "MUL", "GT", "SELECT", "STORE_SCORE", "STORE_SEVERITY", "STORE_ROUTE", "STORE_SUPPRESS"],
+      ["MIN", "MAX", "DIV", "MOD", "NEG", "ABS", "CLAMP", "FLOOR", "CEIL", "ROUND", "POW", "SQRT"],
+      ["EQ", "NE", "LT", "LTE", "GTE", "AND", "OR", "XOR", "NOT", "IS_ZERO", "BETWEEN", "SIGN"],
+      ["DUP", "SWAP", "OVER", "DROP", "LOAD_LOCAL", "STORE_LOCAL", "NOP", "STACK_DEPTH", "LOAD_SCORE", "LOAD_SEVERITY", "LOAD_ROUTE", "LOAD_SUPPRESS"],
+    ];
+    const encoding = new Map();
+    bankOperations.forEach((operations, bank) => {
+      operations.forEach((operation, interval) => encoding.set(operation, {bank, interval}));
+    });
+    const parseOperations = text => text
+      .split(/\r?\n/)
+      .map(line => line.replace(/#.*$/, "").trim())
+      .filter(Boolean)
+      .map(line => line.split(/\s+/)[0]);
+
+    function stopSong(completed = false) {
+      if (state.audio) {
+        state.audio.oscillators.forEach(oscillator => {
+          try { oscillator.stop(); } catch { /* oscillator already stopped */ }
+        });
+        void state.audio.context.close();
+        cancelAnimationFrame(state.audio.frame);
+      }
+      state.audio = null;
+      $("playSong").disabled = false;
+      $("stopSong").disabled = true;
+      $("songBar").style.width = completed ? "100%" : "0";
+      $("songTime").textContent = completed ? "1:00 / 1:00" : "0:00 / 1:00";
+      $("currentOp").textContent = completed ? "complete" : "ready";
+    }
+
+    $("stopSong").addEventListener("click", () => stopSong(false));
+    $("playSong").addEventListener("click", async () => {
+      stopSong(false);
+      const operations = parseOperations($("velatoSource").textContent);
+      if (!operations.length) return;
+      if (operations.length !== 100) {
+        showError(`Expected 100 Velato instructions but loaded ${operations.length}.`);
+        return;
+      }
+
+      const context = new AudioContext();
+      if (context.state === "suspended") await context.resume();
+      const master = context.createGain();
+      master.gain.value = .105;
+      master.connect(context.destination);
+      const start = context.currentTime + .08;
+      const beat = .6;
+      const oscillators = [];
+
+      operations.forEach((operation, index) => {
+        const code = encoding.get(operation) || {bank: 3, interval: 6};
+        const when = start + index * beat;
+        const duration = beat * .86;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const filter = context.createBiquadFilter();
+        oscillator.type = voices[code.bank] || "triangle";
+        oscillator.frequency.value = 440 * 2 ** (((50 + code.interval) - 69) / 12);
+        filter.type = "lowpass";
+        filter.frequency.value = 1600 + code.bank * 650;
+        gain.gain.setValueAtTime(.0001, when);
+        gain.gain.exponentialRampToValueAtTime(index % 4 === 0 ? .055 : .035, when + .02);
+        gain.gain.exponentialRampToValueAtTime(.0001, when + duration);
+        oscillator.connect(filter);
+        filter.connect(gain);
+        gain.connect(master);
+        oscillator.start(when);
+        oscillator.stop(when + duration);
+        oscillators.push(oscillator);
+      });
+
+      $("playSong").disabled = true;
+      $("stopSong").disabled = false;
+      state.audio = {context, oscillators, frame: 0};
+
+      const tick = () => {
+        if (!state.audio) return;
+        const elapsed = Math.max(0, context.currentTime - start);
+        const total = operations.length * beat;
+        const index = Math.min(operations.length - 1, Math.floor(elapsed / beat));
+        $("songBar").style.width = `${Math.min(100, elapsed / total * 100)}%`;
+        $("songTime").textContent = `0:${String(Math.min(59, Math.floor(elapsed))).padStart(2, "0")} / 1:00`;
+        $("currentOp").textContent = operations[index] || "complete";
+        if (elapsed >= total) {
+          stopSong(true);
+          return;
+        }
+        state.audio.frame = requestAnimationFrame(tick);
+      };
+      state.audio.frame = requestAnimationFrame(tick);
+    });
+
+    void loadSources();
+    void refresh();
+    void connectRealtime();
   </script>
 </body>
 </html>
