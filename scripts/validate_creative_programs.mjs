@@ -13,14 +13,27 @@ const graphPath = resolve(root, "apps/web/public/programs/merz/graph-growth-brie
 const canonicalVelatoPath = resolve(root, "velato/programs/live-graph-minute.vasm");
 const publicVelatoPath = resolve(root, "apps/web/public/programs/velato/live-graph-minute.vasm");
 const labScriptPath = resolve(root, "apps/web/public/lab.js");
+const prepareStaticPath = resolve(root, "apps/web/scripts/prepare-static.mjs");
+const webPackagePath = resolve(root, "apps/web/package.json");
 const nginxPath = resolve(root, "infrastructure/docker/web-nginx.conf");
 
-const [memeSource, graphSource, canonicalVelato, publicVelato, labScript, nginx] = await Promise.all([
+const [
+  memeSource,
+  graphSource,
+  canonicalVelato,
+  publicVelato,
+  labScript,
+  prepareStatic,
+  webPackageSource,
+  nginx,
+] = await Promise.all([
   readFile(memePath, "utf8"),
   readFile(graphPath, "utf8"),
   readFile(canonicalVelatoPath, "utf8"),
   readFile(publicVelatoPath, "utf8"),
   readFile(labScriptPath, "utf8"),
+  readFile(prepareStaticPath, "utf8"),
+  readFile(webPackagePath, "utf8"),
   readFile(nginxPath, "utf8"),
 ]);
 
@@ -51,13 +64,15 @@ const velatoInstructions = canonicalVelato
 assert.equal(velatoInstructions.length, 100, "Live Graph Minute must remain exactly 100 instructions");
 assert.equal(velatoInstructions.at(-1), "HALT");
 
-// Parse the browser script in CI and enforce the secure external-loading path.
+// Parse the browser script in CI and enforce the secure build-time loading path.
 new Function(labScript);
 assert.match(labScript, /webkitAudioContext/);
 assert.match(labScript, /speechSynthesis/);
 assert.match(labScript, /createDynamicsCompressor/);
-assert.match(nginx, /location = \/lab\.html/);
-assert.match(nginx, /sub_filter '<\/body>' '<script src="\/lab\.js" defer><\/script><\/body>'/);
+assert.match(prepareStatic, /<script src=\"\/lab\.js\" defer><\/script>/);
+assert.match(prepareStatic, /Prepared Lab document still contains inline JavaScript/);
+assert.match(JSON.parse(webPackageSource).scripts.build, /prepare-static\.mjs dist\/lab\.html/);
+assert.doesNotMatch(nginx, /sub_filter/);
 assert.doesNotMatch(nginx, /script-src[^;]*unsafe-inline/);
 
-console.log("Creative Merzato, Velato, speech and Live Lab media paths validated.");
+console.log("Creative Merzato, Velato, speech and CSP-safe Live Lab paths validated.");
