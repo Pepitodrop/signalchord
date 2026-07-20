@@ -1,0 +1,41 @@
+/* Production layout corrections discovered during browser acceptance testing. */
+@media (min-width: 901px) {
+  body .loginCard {
+    padding: 58px !important;
+  }
+
+  body .loginCard > .eyebrow,
+  body .loginCard > h1,
+  body .loginCard > .muted,
+  body .loginCard > label,
+  body .loginCard > .error,
+  body .loginCard > .primary {
+    width: 44%;
+    min-width: 0;
+    margin-left: auto;
+  }
+
+  body .loginCard > .logo {
+    width: 43px;
+    margin-right: calc(44% - 43px);
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  body .loginCard > .eyebrow,
+  body .loginCard > h1,
+  body .loginCard > .muted,
+  body .loginCard > label,
+  body .loginCard > .error,
+  body .loginCard > .primary {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  body .loginCard > .logo {
+    width: 43px;
+    margin-right: 0;
+    margin-left: 0;
+  }
+}
