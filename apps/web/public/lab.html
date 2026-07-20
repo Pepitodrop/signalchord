@@ -434,9 +434,14 @@
 
     document.querySelectorAll("[data-copy]").forEach(button => {
       button.addEventListener("click", async () => {
-        await navigator.clipboard.writeText($(button.dataset.copy).textContent);
         const previous = button.textContent;
-        button.textContent = "Copied";
+        try {
+          await navigator.clipboard.writeText($(button.dataset.copy).textContent);
+          button.textContent = "Copied";
+        } catch (error) {
+          showError(error instanceof Error ? error.message : String(error));
+          button.textContent = "Copy failed";
+        }
         window.setTimeout(() => { button.textContent = previous; }, 1200);
       });
     });
