@@ -36,7 +36,8 @@ module Api
         user = User.find_or_initialize_by(email: record.email)
         user.assign_attributes(
           password: params.require(:password),
-          display_name: params[:display_name].presence || user.display_name || record.email
+          display_name: params[:display_name].presence || user.display_name || record.email,
+          email_verified_at: user.email_verified_at || Time.current
         )
         ActiveRecord::Base.transaction do
           user.save!
@@ -58,7 +59,7 @@ module Api
           organization: record.organization,
           user:,
           name: "Session #{request.remote_ip}",
-          scopes: scopes_for(record.role),
+          scopes: Membership.scopes_for(record.role),
           expires_at: 30.days.from_now
         )
         render json: {
@@ -78,14 +79,6 @@ module Api
 
       def invitation
         @invitation = current_organization.invitations.where(accepted_at: nil).find(params[:id])
-      end
-
-      def scopes_for(role)
-        case role
-        when "admin" then ["*"]
-        when "analyst", "reviewer" then %w[api:read api:write]
-        else ["api:read"]
-        end
       end
     end
   end

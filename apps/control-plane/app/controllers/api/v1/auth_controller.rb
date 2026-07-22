@@ -21,7 +21,7 @@ module Api
           organization:,
           user:,
           name: "Session #{request.remote_ip}",
-          scopes: scopes_for(membership.role),
+          scopes: Membership.scopes_for(membership.role),
           expires_at: 30.days.from_now
         )
         organization.audit_events.create!(
@@ -42,16 +42,6 @@ module Api
           role: membership.role,
           scopes: token.scopes
         }, status: :created
-      end
-
-      private
-
-      def scopes_for(role)
-        case role
-        when "owner", "admin" then ["*"]
-        when "analyst", "reviewer" then %w[api:read api:write]
-        else ["api:read"]
-        end
       end
     end
   end

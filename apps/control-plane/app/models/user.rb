@@ -10,4 +10,8 @@ class User < ApplicationRecord
   def disabled?
     disabled_at.present?
   end
+
+  def email_verified?
+    email_verified_at.present?
+  end
 end
