@@ -1,10 +1,8 @@
 class AlertEmailDelivery < ApplicationRecord
-  # Mirrors NotificationDelivery::STATUSES (notification_delivery.rb) rather
-  # than inventing a new shape. "sending" is the in-flight marker used to
-  # detect a job that got far enough to attempt a send but never confirmed
-  # the outcome — see AlertEmailNotificationJob for how that state is used
-  # to avoid a possible duplicate send.
-  STATUSES = %w[pending sending delivered failed].freeze
+  # Mirrors NotificationDelivery::STATUSES (notification_delivery.rb) while
+  # adding "sending" for ambiguous SMTP outcomes and "skipped" for recipients
+  # who are no longer eligible when the queued job actually executes.
+  STATUSES = %w[pending sending delivered failed skipped].freeze
 
   belongs_to :organization
   belongs_to :alert
