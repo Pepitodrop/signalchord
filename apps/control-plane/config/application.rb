@@ -11,6 +11,6 @@ module SignalChordControlPlane
     config.active_record.default_timezone = :utc
     config.active_job.queue_adapter = :sidekiq
     config.generators.system_tests = nil
-    config.filter_parameters += %i[password token authorization midi_data]
+    config.filter_parameters += %i[password token authorization midi_data beta_access_code]
   end
 end
