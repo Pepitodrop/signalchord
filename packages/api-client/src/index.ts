@@ -81,7 +81,13 @@ export class SignalChordClient {
   governanceRequests() { return this.request<GovernanceRequestRecord[]>("/api/v1/governance_requests"); }
   createGovernanceRequest(governance_request: Partial<GovernanceRequestRecord>, idempotencyKey: string) { return this.request<GovernanceRequestRecord>("/api/v1/governance_requests", {method: "POST", headers: {"Idempotency-Key": idempotencyKey}, body: JSON.stringify({governance_request})}); }
   watchlists() { return this.request<WatchlistRecord[]>("/api/v1/watchlists"); }
-  createWatchlist(watchlist: {name: string; description?: string; items: WatchlistItemRecord[]}) { return this.request<WatchlistRecord>("/api/v1/watchlists", {method: "POST", body: JSON.stringify({watchlist})}); }
+  createWatchlist(watchlist: {name: string; description?: string; items: WatchlistItemRecord[]}, idempotencyKey?: string) {
+    return this.request<WatchlistRecord>("/api/v1/watchlists", {
+      method: "POST",
+      body: JSON.stringify({watchlist}),
+      headers: idempotencyKey ? {"Idempotency-Key": idempotencyKey} : undefined,
+    });
+  }
   alerts(unread = false) { return this.request<AlertRecord[]>(`/api/v1/alerts${unread ? "?unread=true" : ""}`); }
   updateAlert(id: string, alert: Partial<AlertRecord>) { return this.request<AlertRecord>(`/api/v1/alerts/${encodeURIComponent(id)}`, {method: "PATCH", body: JSON.stringify({alert})}); }
   policies() { return this.request<PolicyRecord[]>("/api/v1/policies"); }
