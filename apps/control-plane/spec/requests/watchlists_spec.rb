@@ -46,7 +46,7 @@ RSpec.describe "POST /api/v1/watchlists", type: :request do
       headers = auth_headers.merge("Idempotency-Key" => "onboarding-watchlist-1")
 
       first_response = -> {
-        post "/api/v1/watchlists", params: valid_params, headers:
+        post "/api/v1/watchlists", params: valid_params, headers: headers
         JSON.parse(response.body)
       }
 
@@ -75,7 +75,7 @@ RSpec.describe "POST /api/v1/watchlists", type: :request do
         ActiveRecord::RecordNotUnique.new("duplicate key value violates unique constraint")
       )
 
-      post "/api/v1/watchlists", params: valid_params, headers:
+      post "/api/v1/watchlists", params: valid_params, headers: headers
 
       expect(response).to have_http_status(:conflict)
       expect(organization.watchlists.count).to eq(0)
