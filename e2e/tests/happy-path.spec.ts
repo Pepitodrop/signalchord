@@ -33,8 +33,19 @@ test("signup -> verify -> login -> create workspace -> create first watchlist ->
 
   await expect(page.getByText("Add your first watchlist.")).toBeVisible();
   await page.getByLabel("Watchlist name").fill("Competitor moves");
+  await page.getByLabel("What are you watching?").selectOption("entity");
+  await page.getByLabel("Stable entity or topic ID").fill("company:acme");
   await page.getByRole("button", {name: "Create watchlist"}).click();
 
+  // Real first-analysis result — this seed target ("company:acme") is the
+  // one entity/watchlist the demo seed data already indexes, so a fresh
+  // beta account genuinely finds a match here rather than an empty state.
+  await expect(page.getByText("Watchlist created.")).toBeVisible();
+  await expect(page.getByText(/existing match|nothing indexed yet/i)).toBeVisible();
+  await page.getByRole("button", {name: "Continue to dashboard"}).click();
+
+  // Lands on the Watchlists tab (not Overview) with the new watchlist visible.
+  await expect(page.getByText("Competitor moves")).toBeVisible();
   await expect(page.getByText("Acme Research")).toBeVisible();
   await expect(page.getByRole("button", {name: "Sign out"})).toBeVisible();
 });

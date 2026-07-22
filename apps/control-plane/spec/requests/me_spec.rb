@@ -27,8 +27,21 @@ RSpec.describe "GET /api/v1/me", type: :request do
     expect(body["organization"]["id"]).to eq(organization.id)
   end
 
-  it "reports complete once the organization has at least one watchlist" do
+  # Intentional behavior change (first-watchlist-setup feature): an empty
+  # Watchlist shell no longer satisfies onboarding — the journey requires a
+  # real monitored subject, not just a name. This replaces the prior test
+  # that expected "complete" from a zero-item watchlist.
+  it "does not report complete for a watchlist with zero items (empty shell)" do
     organization.watchlists.create!(name: "First watchlist")
+
+    get "/api/v1/me", headers: auth_headers
+
+    expect(JSON.parse(response.body)["onboarding_state"]).to eq("first_watchlist_required")
+  end
+
+  it "reports complete once the organization has a watchlist with at least one item" do
+    watchlist = organization.watchlists.create!(name: "First watchlist")
+    watchlist.watchlist_items.create!(target_kind: "entity", target_stable_id: "company:acme")
 
     get "/api/v1/me", headers: auth_headers
 
@@ -38,7 +51,8 @@ RSpec.describe "GET /api/v1/me", type: :request do
   it "does not require the CALLING user to have created the watchlist — org-scoped, not user-scoped" do
     other_user = User.create!(email: "other@example.com", password: "correct-horse-battery-staple", email_verified_at: Time.current)
     Membership.create!(organization:, user: other_user, role: "viewer")
-    organization.watchlists.create!(name: "Created by admin")
+    watchlist = organization.watchlists.create!(name: "Created by admin")
+    watchlist.watchlist_items.create!(target_kind: "entity", target_stable_id: "company:acme")
 
     _record, other_plaintext = ApiToken.issue!(organization:, user: other_user, name: "test", scopes: Membership.scopes_for("viewer"))
     get "/api/v1/me", headers: { "Authorization" => "Bearer #{other_plaintext}" }

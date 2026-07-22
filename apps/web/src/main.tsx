@@ -247,14 +247,19 @@ function Entities({client}: {client: SignalChordClient}) {
   );
 }
 
-function Watchlists({client}: {client: SignalChordClient}) {
+function Watchlists({client, highlightId}: {client: SignalChordClient; highlightId?: string}) {
   const [records, setRecords] = useState<WatchlistRecord[]>([]);
   const [target, setTarget] = useState("company:acme");
   const load = useCallback(() => client.watchlists().then(setRecords), [client]);
+  const highlightRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    highlightRef.current?.scrollIntoView({block: "center"});
+  }, [highlightId, records]);
 
   const create = async () => {
     await client.createWatchlist({
@@ -269,7 +274,11 @@ function Watchlists({client}: {client: SignalChordClient}) {
       <article className="card">
         <h2>Watchlists</h2>
         {records.map(record => (
-          <div className="record" key={record.id}>
+          <div
+            className={record.id === highlightId ? "record highlight" : "record"}
+            key={record.id}
+            ref={record.id === highlightId ? highlightRef : undefined}
+          >
             <b>{record.name}</b>
             {record.items.map(item => <small key={item.target_stable_id}>{item.target_stable_id}</small>)}
           </div>
@@ -369,8 +378,16 @@ function Policies({client}: {client: SignalChordClient}) {
   );
 }
 
-function App({client, me, onLogout}: {client: SignalChordClient; me: MeResponse; onLogout: () => void}) {
-  const [view, setView] = useState<View>("overview");
+function App({client, me, onLogout, highlightWatchlistId}: {
+  client: SignalChordClient;
+  me: MeResponse;
+  onLogout: () => void;
+  highlightWatchlistId?: string;
+}) {
+  // Captured once at mount (App itself only mounts once per session) — lands
+  // on the Watchlists tab with the newly-created watchlist highlighted when
+  // arriving straight from onboarding, Overview otherwise.
+  const [view, setView] = useState<View>(() => highlightWatchlistId ? "watchlists" : "overview");
   // The realtime-gateway SSE connection authenticates via a bearer header,
   // which the web app can no longer supply now that the session lives in an
   // httpOnly cookie (that's the point — it's not JS-readable). Passing no
@@ -427,7 +444,7 @@ function App({client, me, onLogout}: {client: SignalChordClient; me: MeResponse;
         {view === "overview" && <Overview alerts={alerts} sources={sources} watchlists={watchlists}/>}
         {view === "entities" && <Entities client={client}/>}
         {view === "alerts" && <Alerts client={client} alerts={alerts} reload={reload}/>}
-        {view === "watchlists" && <Watchlists client={client}/>}
+        {view === "watchlists" && <Watchlists client={client} highlightId={highlightWatchlistId}/>}
         {view === "sources" && <Sources client={client}/>}
         {view === "policies" && <Policies client={client}/>}
       </main>
@@ -445,6 +462,7 @@ function App({client, me, onLogout}: {client: SignalChordClient; me: MeResponse;
 function ProtectedRoute() {
   const client = useMemo(() => new SignalChordClient(API_URL), []);
   const [step, setStep] = useState<Step>({kind: "loading"});
+  const [highlightWatchlistId, setHighlightWatchlistId] = useState<string | undefined>(undefined);
 
   const refresh = useCallback(async () => {
     try {
@@ -480,9 +498,24 @@ function ProtectedRoute() {
         />
       );
     case "watchlist":
-      return <OnboardingWatchlistPage client={client} onCreated={() => void refresh()}/>;
+      return (
+        <OnboardingWatchlistPage
+          client={client}
+          onCreated={(watchlistId) => {
+            setHighlightWatchlistId(watchlistId);
+            void refresh();
+          }}
+        />
+      );
     case "dashboard":
-      return <App client={client} me={step.me} onLogout={() => setStep({kind: "login"})}/>;
+      return (
+        <App
+          client={client}
+          me={step.me}
+          onLogout={() => setStep({kind: "login"})}
+          highlightWatchlistId={highlightWatchlistId}
+        />
+      );
   }
 }
 
