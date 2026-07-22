@@ -27,10 +27,18 @@ const REALTIME_URL = import.meta.env.VITE_REALTIME_URL ?? "http://localhost:8088
 function useAlerts(client: SignalChordClient, token: string) {
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [live, setLive] = useState(false);
   const load = useCallback(() => client.alerts().then(records => {
     setAlerts(records);
     setLoading(false);
+    setLoadError(false);
+  }).catch(() => {
+    // A failed fetch must not leave the UI stuck on "Checking for alerts…"
+    // forever — surface an honest, retriable error state and keep whatever
+    // data (if any) is already on screen instead of clearing it.
+    setLoading(false);
+    setLoadError(true);
   }), [client]);
 
   useEffect(() => {
@@ -74,7 +82,7 @@ function useAlerts(client: SignalChordClient, token: string) {
     return () => controller.abort();
   }, [load, token]);
 
-  return {alerts, loading, live, reload: load};
+  return {alerts, loading, loadError, live, reload: load};
 }
 
 function Graph({
@@ -127,7 +135,7 @@ function Graph({
   return <div ref={ref} className="graph" aria-label="Knowledge graph"/>;
 }
 
-function Overview({alerts, loading, sources, watchlists}: {alerts: AlertRecord[]; loading: boolean; sources: SourceRecord[]; watchlists: WatchlistRecord[]}) {
+function Overview({alerts, loading, loadError, sources, watchlists}: {alerts: AlertRecord[]; loading: boolean; loadError: boolean; sources: SourceRecord[]; watchlists: WatchlistRecord[]}) {
   const top = alerts[0];
   return (
     <section className="grid">
@@ -149,28 +157,34 @@ function Overview({alerts, loading, sources, watchlists}: {alerts: AlertRecord[]
           <b>{alerts.length}<span>Alerts</span></b>
         </div>
       </article>
-      <article className="card wide"><h2>Recent alerts</h2><AlertList alerts={alerts.slice(0, 8)} loading={loading}/></article>
+      <article className="card wide"><h2>Recent alerts</h2><AlertList alerts={alerts.slice(0, 8)} loading={loading} error={loadError}/></article>
     </section>
   );
 }
 
-function AlertList({alerts, loading, onSelect}: {alerts: AlertRecord[]; loading: boolean; onSelect?: (record: AlertRecord) => void}) {
+function AlertList({alerts, loading, error, onSelect}: {alerts: AlertRecord[]; loading: boolean; error?: boolean; onSelect?: (record: AlertRecord) => void}) {
+  const banner = error && (
+    <p className="muted error">Couldn't load alerts — retrying. {alerts.length > 0 ? "Showing the last known list." : ""}</p>
+  );
   if (loading) return <p className="muted">Checking for alerts…</p>;
-  if (!alerts.length) return <p className="muted">No alerts yet.</p>;
+  if (!alerts.length) return banner ?? <p className="muted">No alerts yet.</p>;
   return (
-    <div className="list">
-      {alerts.map(alert => (
-        <button key={alert.id} onClick={() => onSelect?.(alert)}>
-          <strong className="number">{alert.alert_score}</strong>
-          <span><b>{alert.title}</b><small>{alert.summary}</small></span>
-          <em>{alert.review_status}</em>
-        </button>
-      ))}
-    </div>
+    <>
+      {banner}
+      <div className="list">
+        {alerts.map(alert => (
+          <button key={alert.id} onClick={() => onSelect?.(alert)}>
+            <strong className="number">{alert.alert_score}</strong>
+            <span><b>{alert.title}</b><small>{alert.summary}</small></span>
+            <em>{alert.review_status}</em>
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
-function Alerts({client, alerts, loading, reload}: {client: SignalChordClient; alerts: AlertRecord[]; loading: boolean; reload: () => Promise<void>}) {
+function Alerts({client, alerts, loading, loadError, reload}: {client: SignalChordClient; alerts: AlertRecord[]; loading: boolean; loadError: boolean; reload: () => Promise<void>}) {
   const [selected, setSelected] = useState<AlertRecord | null>(alerts[0] ?? null);
   useEffect(() => {
     if (!selected && alerts[0]) setSelected(alerts[0]);
@@ -188,7 +202,7 @@ function Alerts({client, alerts, loading, reload}: {client: SignalChordClient; a
 
   return (
     <section className="split">
-      <article className="card"><h2>Alert inbox</h2><AlertList alerts={alerts} loading={loading} onSelect={setSelected}/></article>
+      <article className="card"><h2>Alert inbox</h2><AlertList alerts={alerts} loading={loading} error={loadError} onSelect={setSelected}/></article>
       <article className="card detail">
         {selected ? (
           <>
@@ -458,7 +472,7 @@ function App({client, me, onLogout, highlightWatchlistId}: {
   // the failed connection) rather than reconnecting live; extending
   // realtime-gateway itself to accept the session cookie is out of scope for
   // this change (a separate Go service) and tracked in TODOS.md.
-  const {alerts, loading, live, reload} = useAlerts(client, "");
+  const {alerts, loading, loadError, live, reload} = useAlerts(client, "");
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [watchlists, setWatchlists] = useState<WatchlistRecord[]>([]);
   const emailAlerts = useEmailAlertsPreference(client, me.email_alerts_enabled ?? false);
@@ -516,9 +530,9 @@ function App({client, me, onLogout, highlightWatchlistId}: {
             <span className={`live ${live ? "on" : "off"}`}>{live ? "Live" : "Offline"}</span>
           </div>
         </header>
-        {view === "overview" && <Overview alerts={alerts} loading={loading} sources={sources} watchlists={watchlists}/>}
+        {view === "overview" && <Overview alerts={alerts} loading={loading} loadError={loadError} sources={sources} watchlists={watchlists}/>}
         {view === "entities" && <Entities client={client}/>}
-        {view === "alerts" && <Alerts client={client} alerts={alerts} loading={loading} reload={reload}/>}
+        {view === "alerts" && <Alerts client={client} alerts={alerts} loading={loading} loadError={loadError} reload={reload}/>}
         {view === "watchlists" && <Watchlists client={client} highlightId={highlightWatchlistId}/>}
         {view === "sources" && <Sources client={client}/>}
         {view === "policies" && <Policies client={client}/>}
