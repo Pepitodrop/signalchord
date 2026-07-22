@@ -3,6 +3,7 @@ class Membership < ApplicationRecord
 
   belongs_to :organization
   belongs_to :user
+  has_many :alert_email_deliveries, dependent: :destroy
   validates :role, inclusion: { in: ROLES }
   validates :user_id, uniqueness: { scope: :organization_id }
 

@@ -1,0 +1,11 @@
+<%= @alert.title %>
+
+<%= @alert.summary %>
+
+Prioritization score <%= @alert.alert_score %>, severity <%= @alert.severity_code %>.
+<% if @policy_name %>
+Triggered policy: <%= @policy_name %>.
+<% end %>
+<%= @evidence_count %> evidence record<%= @evidence_count == 1 ? "" : "s" %> referenced.
+
+<%= @dashboard_url %>

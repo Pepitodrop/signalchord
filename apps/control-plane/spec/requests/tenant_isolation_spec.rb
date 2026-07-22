@@ -257,4 +257,28 @@ RSpec.describe "tenant isolation", type: :request do
 
     expect(response).to have_http_status(:forbidden)
   end
+
+  it "PATCH /api/v1/me only ever updates the caller's own membership, never another tenant's" do
+    # The top-level `token` fixture is an org-level token with no bound user
+    # (current_membership requires a user), so this needs its own real,
+    # user-bound login — the same real-round-trip pattern the CSRF tests
+    # above use, not a hand-issued token.
+    login_as_alpha_via_cookie
+
+    patch "/api/v1/me",
+          params: { membership: { email_alerts_enabled: true } },
+          headers: { "Origin" => ENV.fetch("WEB_ORIGINS", "http://localhost:5173").split(",").first }
+
+    expect(response).to have_http_status(:ok)
+    expect(alpha_membership.reload.email_alerts_enabled).to be(true)
+    expect(beta_membership.reload.email_alerts_enabled).to be(false)
+  end
+
+  it "does not let one tenant's AlertEmailDelivery be visible or writable from another tenant's scope" do
+    alpha_delivery = alpha.alert_email_deliveries.create!(alert: alpha_alert, membership: alpha_membership, status: "pending")
+    beta_delivery = beta.alert_email_deliveries.create!(alert: beta_alert, membership: beta_membership, status: "pending")
+
+    expect(alpha.alert_email_deliveries.find_by(id: beta_delivery.id)).to be_nil
+    expect(beta.alert_email_deliveries.find_by(id: alpha_delivery.id)).to be_nil
+  end
 end

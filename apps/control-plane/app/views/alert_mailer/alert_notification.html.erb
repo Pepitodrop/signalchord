@@ -1,0 +1,8 @@
+<p><%= @alert.title %></p>
+<p><%= @alert.summary %></p>
+<p>Prioritization score <%= @alert.alert_score %>, severity <%= @alert.severity_code %>.</p>
+<% if @policy_name %>
+<p>Triggered policy: <%= @policy_name %>.</p>
+<% end %>
+<p><%= @evidence_count %> evidence record<%= @evidence_count == 1 ? "" : "s" %> referenced.</p>
+<p><a href="<%= @dashboard_url %>"><%= @dashboard_url %></a></p>
