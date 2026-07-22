@@ -65,7 +65,12 @@ RSpec.describe "GET /api/v1/me", type: :request do
   end
 
   it "works identically via a cookie session (no auth-path drift)" do
-    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+    # Request specs can't hand-construct an encrypted cookie value (the
+    # integration session's `cookies` helper is a plain Rack::Test::CookieJar,
+    # not the richer jar a real controller response builds) — go through the
+    # actual login endpoint instead, which is the only legitimate way a
+    # cookie session gets created anyway.
+    post "/api/v1/auth/web_session", params: { email: user.email, password: "correct-horse-battery-staple" }
 
     get "/api/v1/me"
 

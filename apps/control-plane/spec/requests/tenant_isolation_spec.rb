@@ -3,8 +3,14 @@ require "rails_helper"
 RSpec.describe "tenant isolation", type: :request do
   let!(:alpha) { Organization.create!(name: "Alpha", slug: "alpha") }
   let!(:beta) { Organization.create!(name: "Beta", slug: "beta") }
-  let!(:alpha_user) { User.create!(email: "alpha@example.com", password: "correct-horse-battery-staple", display_name: "Alpha Analyst") }
-  let!(:beta_user) { User.create!(email: "beta@example.com", password: "correct-horse-battery-staple", display_name: "Beta Analyst") }
+  let!(:alpha_user) do
+    User.create!(email: "alpha@example.com", password: "correct-horse-battery-staple", display_name: "Alpha Analyst",
+                 email_verified_at: Time.current)
+  end
+  let!(:beta_user) do
+    User.create!(email: "beta@example.com", password: "correct-horse-battery-staple", display_name: "Beta Analyst",
+                 email_verified_at: Time.current)
+  end
   let!(:alpha_membership) { Membership.create!(organization: alpha, user: alpha_user, role: "admin") }
   let!(:beta_membership) { Membership.create!(organization: beta, user: beta_user, role: "admin") }
   let!(:token) do
@@ -177,8 +183,18 @@ RSpec.describe "tenant isolation", type: :request do
     expect(response).to have_http_status(:forbidden)
   end
 
+  # These four use a real login round-trip to obtain the session cookie
+  # rather than hand-constructing an encrypted cookie value — request specs
+  # can't write cookies.encrypted directly (the integration session's
+  # `cookies` helper is a plain Rack::Test::CookieJar, not the richer jar a
+  # real controller response builds), and a real login is the only
+  # legitimate way a cookie session gets created anyway.
+  def login_as_alpha_via_cookie
+    post "/api/v1/auth/web_session", params: { email: alpha_user.email, password: "correct-horse-battery-staple" }
+  end
+
   it "isolates tenants identically whether authenticated via header or cookie" do
-    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+    login_as_alpha_via_cookie
 
     get "/api/v1/sources"
     ids = JSON.parse(response.body).map { |source| source.fetch("id") }
@@ -190,7 +206,7 @@ RSpec.describe "tenant isolation", type: :request do
   end
 
   it "rejects a cookie-authenticated mutating request from a mismatched Origin (CSRF)" do
-    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+    login_as_alpha_via_cookie
 
     patch "/api/v1/sources/#{alpha_source.id}",
           params: { source: { name: "modified via csrf" } },
@@ -201,7 +217,7 @@ RSpec.describe "tenant isolation", type: :request do
   end
 
   it "rejects a cookie-authenticated mutating request with no Origin header at all (fail closed)" do
-    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+    login_as_alpha_via_cookie
 
     patch "/api/v1/sources/#{alpha_source.id}", params: { source: { name: "modified via csrf" } }
 
@@ -209,7 +225,7 @@ RSpec.describe "tenant isolation", type: :request do
   end
 
   it "allows a cookie-authenticated mutating request from a matching Origin" do
-    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+    login_as_alpha_via_cookie
 
     patch "/api/v1/sources/#{alpha_source.id}",
           params: { source: { name: "modified legitimately" } },
