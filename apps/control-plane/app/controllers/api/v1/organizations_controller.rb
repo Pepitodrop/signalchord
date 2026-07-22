@@ -10,6 +10,14 @@ module Api
       # is ever set), so nothing extra is needed there.
       skip_before_action :authenticate_api_token!, only: :create
 
+      # unique_slug_for has the same check-then-create shape as signup's
+      # email uniqueness (see SignupsController) — a race between two
+      # different users naming their workspace identically can still slip
+      # past the pre-check and hit the DB's real unique index on slug.
+      rescue_from ActiveRecord::RecordNotUnique, with: -> {
+        render json: { error: "slug_collision_retry" }, status: :conflict
+      }
+
       def index = render json: [organization_json(current_organization)]
       def show = render json: organization_json(current_organization)
 
@@ -24,18 +32,28 @@ module Api
         end
         return render json: { error: "verification_required" }, status: :forbidden unless user.email_verified?
 
+        organization = nil
+        already_has_workspace = false
+
         # This endpoint creates the ONE workspace during onboarding — it is
         # not a general "create additional orgs" endpoint (that's deferred,
         # see TODOS.md's org-picker entry for the multi-org future this
-        # implies).
-        if user.memberships.enabled.exists?
-          return render json: { error: "already_has_workspace" }, status: :unprocessable_entity
-        end
-
-        organization = nil
+        # implies). The "does this user already have a workspace" check and
+        # the membership creation must be atomic: without the row lock, two
+        # concurrent requests for the same user (double-click, a retried
+        # request) can both pass the check before either commits, letting
+        # one user end up owning two organizations. Locking the user row
+        # forces the second request to wait for the first to commit, then
+        # correctly see the membership it just created.
         ActiveRecord::Base.transaction do
+          locked_user = User.lock.find(user.id)
+          if locked_user.memberships.enabled.exists?
+            already_has_workspace = true
+            next
+          end
+
           organization = Organization.create!(name:, slug: unique_slug_for(name))
-          membership = Membership.create!(organization:, user:, role: "owner")
+          membership = Membership.create!(organization:, user: locked_user, role: "owner")
           organization.audit_events.create!(
             actor_user_id: user.id,
             action: "organization.created",
@@ -54,6 +72,10 @@ module Api
             metadata: { role: "owner" },
             occurred_at: Time.current
           )
+        end
+
+        if already_has_workspace
+          return render json: { error: "already_has_workspace" }, status: :unprocessable_entity
         end
 
         token, plaintext = ApiToken.issue!(

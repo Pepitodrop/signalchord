@@ -61,6 +61,21 @@ RSpec.describe "POST /api/v1/organizations", type: :request do
     expect(response).to have_http_status(:created)
   end
 
+  it "returns a clean 409 (not a 500) on a simulated concurrent slug collision race" do
+    # Same TOCTOU shape as signups_spec.rb's RecordNotUnique test: two
+    # different users naming their workspace identically can both pass
+    # unique_slug_for's pre-check before either commits, so the DB's real
+    # unique index on organizations.slug is the actual backstop.
+    allow(Organization).to receive(:create!).and_raise(
+      ActiveRecord::RecordNotUnique.new("duplicate key value violates unique constraint")
+    )
+
+    post "/api/v1/organizations", params: valid_params
+
+    expect(response).to have_http_status(:conflict)
+    expect(JSON.parse(response.body)["error"]).to eq("slug_collision_retry")
+  end
+
   it "is throttled after repeated attempts from one IP" do
     Rack::Attack.cache.store.clear
     begin
