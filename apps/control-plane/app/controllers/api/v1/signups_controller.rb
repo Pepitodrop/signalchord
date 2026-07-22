@@ -34,7 +34,14 @@ module Api
       private
 
       def verify_beta_access_code!
-        submitted = params.require(:beta_access_code).to_s
+        # params.require treats a blank value the same as an absent key
+        # (ParameterMissing -> 400), which would misreport "no code
+        # submitted" as a request error rather than "wrong/blank code" (401).
+        # Only a genuinely absent key is a malformed request; present-but-blank
+        # is a credential the fail-closed check below correctly rejects.
+        raise ActionController::ParameterMissing, :beta_access_code unless params.key?(:beta_access_code)
+
+        submitted = params[:beta_access_code].to_s
         configured = ENV["BETA_ACCESS_CODE"].to_s
 
         if configured.blank? || !codes_match?(submitted, configured)

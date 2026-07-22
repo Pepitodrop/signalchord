@@ -167,9 +167,13 @@ RSpec.describe "tenant isolation", type: :request do
   end
 
   it "does not authenticate into its former organization once a membership is disabled" do
+    # auth_headers'/token's ApiToken.issue! is org-level (no user:), so the
+    # disabled-membership check (which only applies to a user-scoped token)
+    # has nothing to reject there. Issue a real per-user token to exercise it.
+    _record, user_plaintext = ApiToken.issue!(organization: alpha, user: alpha_user, name: "user session", scopes: ["*"])
     alpha_membership.update!(disabled_at: Time.current)
 
-    get "/api/v1/sources", headers: auth_headers
+    get "/api/v1/sources", headers: { "Authorization" => "Bearer #{user_plaintext}" }
     expect(response).to have_http_status(:forbidden)
   end
 

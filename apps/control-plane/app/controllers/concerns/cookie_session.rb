@@ -6,6 +6,13 @@
 module CookieSession
   extend ActiveSupport::Concern
 
+  # ActionController::API (used by ApplicationController and the standalone
+  # pre-auth controllers) does not include cookie support by default — this
+  # wires it into whichever controller includes this concern.
+  included do
+    include ActionController::Cookies
+  end
+
   SESSION_COOKIE_NAME = ENV.fetch("SESSION_COOKIE_NAME", "sc_session").freeze
 
   private

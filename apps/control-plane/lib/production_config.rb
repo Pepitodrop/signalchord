@@ -122,10 +122,12 @@ module ProductionConfig
 
   def validate_smtp(env)
     host = env["SMTP_HOST"].to_s
-    errors = []
-    errors << "SMTP_HOST is required" if host == ""
-    errors << "SMTP_HOST cannot point at localhost or a local mail-catcher" if local_address?(host) || host == "mailpit"
-    errors
+    # local_address? assumes a non-empty host (matches every other call site
+    # in this file, e.g. validate_https_url returns early the same way) —
+    # "".split(":", 2) is [], not [""], so .first.delete_prefix would raise.
+    return ["SMTP_HOST is required"] if host == ""
+
+    local_address?(host) || host == "mailpit" ? ["SMTP_HOST cannot point at localhost or a local mail-catcher"] : []
   end
 
   def truthy?(value)
