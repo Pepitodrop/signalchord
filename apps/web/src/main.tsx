@@ -16,6 +16,8 @@ import {LoginPage} from "./routes/LoginPage";
 import {OnboardingWorkspacePage} from "./routes/OnboardingWorkspacePage";
 import {OnboardingWatchlistPage} from "./routes/OnboardingWatchlistPage";
 import {stepForMe, type Step} from "./routes/deriveStep";
+import {describeEvidenceCount, EVIDENCE_DISCLOSURE_LABEL} from "./routes/describeEvidence";
+import {describePolicy} from "./routes/describePolicy";
 import "./styles.css";
 
 type View = "overview" | "entities" | "alerts" | "watchlists" | "sources" | "policies";
@@ -24,11 +26,32 @@ const REALTIME_URL = import.meta.env.VITE_REALTIME_URL ?? "http://localhost:8088
 
 function useAlerts(client: SignalChordClient, token: string) {
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [live, setLive] = useState(false);
-  const load = useCallback(() => client.alerts().then(setAlerts), [client]);
+  const load = useCallback(() => client.alerts().then(records => {
+    setAlerts(records);
+    setLoading(false);
+    setLoadError(false);
+  }).catch(() => {
+    // A failed fetch must not leave the UI stuck on "Checking for alerts…"
+    // forever — surface an honest, retriable error state and keep whatever
+    // data (if any) is already on screen instead of clearing it.
+    setLoading(false);
+    setLoadError(true);
+  }), [client]);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  // 30s polling floor for feed freshness — independent of the SSE trigger
+  // below, which degrades gracefully to "Offline" today (no cookie-auth
+  // support in realtime-gateway) and shouldn't be the only way the feed
+  // ever updates.
+  useEffect(() => {
+    const id = setInterval(() => void load(), 30_000);
+    return () => clearInterval(id);
   }, [load]);
 
   useEffect(() => {
@@ -59,7 +82,7 @@ function useAlerts(client: SignalChordClient, token: string) {
     return () => controller.abort();
   }, [load, token]);
 
-  return {alerts, live, reload: load};
+  return {alerts, loading, loadError, live, reload: load};
 }
 
 function Graph({
@@ -112,7 +135,7 @@ function Graph({
   return <div ref={ref} className="graph" aria-label="Knowledge graph"/>;
 }
 
-function Overview({alerts, sources, watchlists}: {alerts: AlertRecord[]; sources: SourceRecord[]; watchlists: WatchlistRecord[]}) {
+function Overview({alerts, loading, loadError, sources, watchlists}: {alerts: AlertRecord[]; loading: boolean; loadError: boolean; sources: SourceRecord[]; watchlists: WatchlistRecord[]}) {
   const top = alerts[0];
   return (
     <section className="grid">
@@ -122,7 +145,7 @@ function Overview({alerts, sources, watchlists}: {alerts: AlertRecord[]; sources
         <p>{top?.summary ?? "Run the permitted fixture feed to create an evidence-linked alert."}</p>
         <div className="score">
           <strong>{top?.alert_score ?? 0}</strong>
-          <span>Policy score<br/>Severity {top?.severity_code ?? 0}</span>
+          <span>Prioritization score<br/>Severity {top?.severity_code ?? 0}</span>
         </div>
         <small>{top?.stable_id ?? "No alert has been projected"}</small>
       </article>
@@ -134,27 +157,34 @@ function Overview({alerts, sources, watchlists}: {alerts: AlertRecord[]; sources
           <b>{alerts.length}<span>Alerts</span></b>
         </div>
       </article>
-      <article className="card wide"><h2>Recent alerts</h2><AlertList alerts={alerts.slice(0, 8)}/></article>
+      <article className="card wide"><h2>Recent alerts</h2><AlertList alerts={alerts.slice(0, 8)} loading={loading} error={loadError}/></article>
     </section>
   );
 }
 
-function AlertList({alerts, onSelect}: {alerts: AlertRecord[]; onSelect?: (record: AlertRecord) => void}) {
-  if (!alerts.length) return <p className="muted">No alerts yet.</p>;
+function AlertList({alerts, loading, error, onSelect}: {alerts: AlertRecord[]; loading: boolean; error?: boolean; onSelect?: (record: AlertRecord) => void}) {
+  const banner = error && (
+    <p className="muted error">Couldn't load alerts — retrying. {alerts.length > 0 ? "Showing the last known list." : ""}</p>
+  );
+  if (loading) return <p className="muted">Checking for alerts…</p>;
+  if (!alerts.length) return banner ?? <p className="muted">No alerts yet.</p>;
   return (
-    <div className="list">
-      {alerts.map(alert => (
-        <button key={alert.id} onClick={() => onSelect?.(alert)}>
-          <strong className="number">{alert.alert_score}</strong>
-          <span><b>{alert.title}</b><small>{alert.summary}</small></span>
-          <em>{alert.review_status}</em>
-        </button>
-      ))}
-    </div>
+    <>
+      {banner}
+      <div className="list">
+        {alerts.map(alert => (
+          <button key={alert.id} onClick={() => onSelect?.(alert)}>
+            <strong className="number">{alert.alert_score}</strong>
+            <span><b>{alert.title}</b><small>{alert.summary}</small></span>
+            <em>{alert.review_status}</em>
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
-function Alerts({client, alerts, reload}: {client: SignalChordClient; alerts: AlertRecord[]; reload: () => Promise<void>}) {
+function Alerts({client, alerts, loading, loadError, reload}: {client: SignalChordClient; alerts: AlertRecord[]; loading: boolean; loadError: boolean; reload: () => Promise<void>}) {
   const [selected, setSelected] = useState<AlertRecord | null>(alerts[0] ?? null);
   useEffect(() => {
     if (!selected && alerts[0]) setSelected(alerts[0]);
@@ -172,17 +202,25 @@ function Alerts({client, alerts, reload}: {client: SignalChordClient; alerts: Al
 
   return (
     <section className="split">
-      <article className="card"><h2>Alert inbox</h2><AlertList alerts={alerts} onSelect={setSelected}/></article>
+      <article className="card"><h2>Alert inbox</h2><AlertList alerts={alerts} loading={loading} error={loadError} onSelect={setSelected}/></article>
       <article className="card detail">
         {selected ? (
           <>
-            <p className="eyebrow">Score {selected.alert_score}</p>
+            {/* Field order (title -> summary -> policy -> evidence -> actions)
+                matches the order a user actually asks these questions: what
+                changed, why it matters, show me the proof. Resolved during
+                /plan-design-review. */}
+            <p className="eyebrow">Prioritization score {selected.alert_score}</p>
             <h2>{selected.title}</h2>
             <p>{selected.summary}</p>
-            <h3>Evidence IDs</h3>
-            <pre>{selected.evidence_ids.join("\n") || "No evidence"}</pre>
-            <h3>Graph path IDs</h3>
-            <pre>{selected.graph_path_ids.join("\n") || "No paths"}</pre>
+            <p>{describePolicy(selected.policy_name)}</p>
+            <p>{describeEvidenceCount(selected.evidence_ids)}</p>
+            {(selected.evidence_ids.length > 0 || selected.graph_path_ids.length > 0) && (
+              <details>
+                <summary>{EVIDENCE_DISCLOSURE_LABEL}</summary>
+                <pre>{[...selected.evidence_ids, ...selected.graph_path_ids].join("\n")}</pre>
+              </details>
+            )}
             <div className="actions">
               <button onClick={() => void review("verified", "relevant")}>Verify</button>
               <button onClick={() => void review("dismissed", "not_relevant")}>Dismiss</button>
@@ -378,6 +416,45 @@ function Policies({client}: {client: SignalChordClient}) {
   );
 }
 
+// Email-preference toggle — a plain labeled button (matching the .actions/
+// nav/footer button vocabulary already used everywhere else in this app),
+// not a generic pill/switch component, since this codebase has no
+// toggle-switch precedent anywhere. Optimistic update with revert-on-failure:
+// flips instantly on click, reverts with an inline error if the PATCH fails.
+// Resolved during /plan-design-review (see docs/specs/explainable-alert-feed.md).
+function useEmailAlertsPreference(client: SignalChordClient, initial: boolean) {
+  const [enabled, setEnabled] = useState(initial);
+  const [error, setError] = useState("");
+
+  const toggle = async () => {
+    const next = !enabled;
+    setEnabled(next);
+    setError("");
+    try {
+      await client.updateMe({email_alerts_enabled: next});
+    } catch {
+      setEnabled(!next);
+      setError("Couldn't save — try again");
+    }
+  };
+
+  return {enabled, error, toggle};
+}
+
+function EmailAlertsToggle({enabled, error, onToggle, className}: {
+  enabled: boolean;
+  error: string;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <button onClick={onToggle}>Email alerts: {enabled ? "On" : "Off"}</button>
+      {error && <small className="error">{error}</small>}
+    </div>
+  );
+}
+
 function App({client, me, onLogout, highlightWatchlistId}: {
   client: SignalChordClient;
   me: MeResponse;
@@ -395,9 +472,10 @@ function App({client, me, onLogout, highlightWatchlistId}: {
   // the failed connection) rather than reconnecting live; extending
   // realtime-gateway itself to accept the session cookie is out of scope for
   // this change (a separate Go service) and tracked in TODOS.md.
-  const {alerts, live, reload} = useAlerts(client, "");
+  const {alerts, loading, loadError, live, reload} = useAlerts(client, "");
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [watchlists, setWatchlists] = useState<WatchlistRecord[]>([]);
+  const emailAlerts = useEmailAlertsPreference(client, me.email_alerts_enabled ?? false);
 
   useEffect(() => {
     void Promise.all([client.sources(), client.watchlists()]).then(([sourceRecords, watchlistRecords]) => {
@@ -430,6 +508,7 @@ function App({client, me, onLogout, highlightWatchlistId}: {
         <footer>
           <small>{me.organization.name}</small>
           <b>{me.user.display_name ?? me.user.email}</b>
+          <EmailAlertsToggle enabled={emailAlerts.enabled} error={emailAlerts.error} onToggle={() => void emailAlerts.toggle()}/>
           <button onClick={logout}>Sign out</button>
         </footer>
       </aside>
@@ -439,11 +518,21 @@ function App({client, me, onLogout, highlightWatchlistId}: {
             <p className="eyebrow">{items.find(item => item[0] === view)?.[1]}</p>
             <h1>Real-time intelligence from connected news signals.</h1>
           </div>
-          <span className={`live ${live ? "on" : "off"}`}>{live ? "Live" : "Offline"}</span>
+          <div className="headerActions">
+            {/* aside footer (with the same toggle) is hidden below 900px —
+                this is the mobile-only equivalent affordance. */}
+            <EmailAlertsToggle
+              enabled={emailAlerts.enabled}
+              error={emailAlerts.error}
+              onToggle={() => void emailAlerts.toggle()}
+              className="mobileSettings"
+            />
+            <span className={`live ${live ? "on" : "off"}`}>{live ? "Live" : "Offline"}</span>
+          </div>
         </header>
-        {view === "overview" && <Overview alerts={alerts} sources={sources} watchlists={watchlists}/>}
+        {view === "overview" && <Overview alerts={alerts} loading={loading} loadError={loadError} sources={sources} watchlists={watchlists}/>}
         {view === "entities" && <Entities client={client}/>}
-        {view === "alerts" && <Alerts client={client} alerts={alerts} reload={reload}/>}
+        {view === "alerts" && <Alerts client={client} alerts={alerts} loading={loading} loadError={loadError} reload={reload}/>}
         {view === "watchlists" && <Watchlists client={client} highlightId={highlightWatchlistId}/>}
         {view === "sources" && <Sources client={client}/>}
         {view === "policies" && <Policies client={client}/>}

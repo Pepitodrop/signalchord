@@ -21,8 +21,19 @@ module Api
           user: user.as_json(only: %i[id email display_name]),
           organization: current_organization.as_json(only: %i[id name slug]),
           role: current_membership&.role,
+          email_alerts_enabled: current_membership&.email_alerts_enabled,
           onboarding_state: onboarding_state_for(user)
         }
+      end
+
+      # Scoped to current_membership only — resolved server-side from the
+      # authenticated token, never from a client-supplied id — so this can
+      # never update another user's membership regardless of request body.
+      def update
+        return render_error("not_found", :not_found) unless current_membership
+
+        current_membership.update!(params.require(:membership).permit(:email_alerts_enabled))
+        render json: { email_alerts_enabled: current_membership.email_alerts_enabled }
       end
 
       private

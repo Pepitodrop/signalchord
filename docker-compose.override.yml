@@ -83,6 +83,30 @@ services:
       control-plane: {condition: service_healthy}
       kafka: {condition: service_healthy}
 
+  sidekiq:
+    profiles: [slice]
+    build:
+      context: .
+      dockerfile: infrastructure/docker/control-plane.Dockerfile
+    environment:
+      <<: *v1-environment
+      RAILS_ENV: production
+      DATABASE_URL: postgresql://signalchord:signalchord@postgres:5432/signalchord
+      REDIS_URL: redis://valkey:6379/1
+      SECRET_KEY_BASE: local-development-secret-key-base-not-for-production
+      FORCE_SSL: "false"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_STARTTLS: "false"
+      SMTP_OPEN_TIMEOUT: "5"
+      SMTP_READ_TIMEOUT: "5"
+      MAILER_FROM_ADDRESS: beta@signalchord.local
+    command: ["bundle", "exec", "sidekiq"]
+    depends_on:
+      control-plane: {condition: service_healthy}
+      valkey: {condition: service_healthy}
+      mailpit: {condition: service_healthy}
+
   entity-resolution:
     profiles: [slice]
     build: {context: ., dockerfile: infrastructure/docker/python-service.Dockerfile}

@@ -16,4 +16,10 @@ RSpec.configure do |config|
   config.infer_spec_type_from_file_location!
   config.filter_rails_from_backtrace!
   config.include ActiveSupport::Testing::TimeHelpers
+  config.include ActiveJob::TestHelper
+
+  # ActiveJob's :test adapter (config/environments/test.rb) accumulates
+  # enqueued_jobs across examples unless explicitly cleared — the per-example
+  # transactional rollback only resets the database, not this in-memory queue.
+  config.after { clear_enqueued_jobs }
 end

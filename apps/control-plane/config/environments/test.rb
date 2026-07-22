@@ -18,4 +18,9 @@ Rails.application.configure do
   # error.
   config.action_mailer.delivery_method = :test
   config.action_mailer.perform_deliveries = true
+
+  # application.rb sets queue_adapter = :sidekiq for every environment; override
+  # to :test here so specs that enqueue jobs (AlertEmailNotificationJob) don't
+  # require a real Redis connection, matching the delivery_method override above.
+  config.active_job.queue_adapter = :test
 end

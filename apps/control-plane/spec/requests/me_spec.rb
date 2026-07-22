@@ -118,3 +118,74 @@ RSpec.describe "GET /api/v1/me", type: :request do
     end
   end
 end
+
+RSpec.describe "PATCH /api/v1/me", type: :request do
+  let!(:organization) { Organization.create!(name: "Acme", slug: "acme") }
+  let!(:user) do
+    User.create!(email: "member@example.com", password: "correct-horse-battery-staple", email_verified_at: Time.current)
+  end
+  let!(:membership) { Membership.create!(organization:, user:, role: "viewer") }
+  let!(:token) do
+    _record, plaintext = ApiToken.issue!(organization:, user:, name: "test", scopes: Membership.scopes_for("viewer"))
+    plaintext
+  end
+  let(:auth_headers) { { "Authorization" => "Bearer #{token}" } }
+
+  it "returns 401 with no session at all" do
+    patch "/api/v1/me", params: { membership: { email_alerts_enabled: true } }
+    expect(response).to have_http_status(:unauthorized)
+  end
+
+  it "updates the caller's own email_alerts_enabled preference" do
+    expect(membership.email_alerts_enabled).to be(false)
+
+    patch "/api/v1/me", params: { membership: { email_alerts_enabled: true } }, headers: auth_headers
+
+    expect(response).to have_http_status(:ok)
+    expect(JSON.parse(response.body)["email_alerts_enabled"]).to be(true)
+    expect(membership.reload.email_alerts_enabled).to be(true)
+  end
+
+  it "is reflected on GET /api/v1/me afterward" do
+    patch "/api/v1/me", params: { membership: { email_alerts_enabled: true } }, headers: auth_headers
+
+    get "/api/v1/me", headers: auth_headers
+
+    expect(JSON.parse(response.body)["email_alerts_enabled"]).to be(true)
+  end
+
+  it "ignores a client-supplied membership id — can never target another member's preference" do
+    other_user = User.create!(email: "other@example.com", password: "correct-horse-battery-staple", email_verified_at: Time.current)
+    other_membership = Membership.create!(organization:, user: other_user, role: "viewer")
+
+    patch "/api/v1/me",
+          params: { membership: { id: other_membership.id, email_alerts_enabled: true } },
+          headers: auth_headers
+
+    expect(response).to have_http_status(:ok)
+    expect(membership.reload.email_alerts_enabled).to be(true)
+    expect(other_membership.reload.email_alerts_enabled).to be(false)
+  end
+
+  it "rejects a cookie-authenticated mutating request from a mismatched Origin (CSRF)" do
+    post "/api/v1/auth/web_session", params: { email: user.email, password: "correct-horse-battery-staple" }
+
+    patch "/api/v1/me",
+          params: { membership: { email_alerts_enabled: true } },
+          headers: { "Origin" => "https://attacker.example" }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(membership.reload.email_alerts_enabled).to be(false)
+  end
+
+  it "allows a cookie-authenticated mutating request from a matching Origin" do
+    post "/api/v1/auth/web_session", params: { email: user.email, password: "correct-horse-battery-staple" }
+
+    patch "/api/v1/me",
+          params: { membership: { email_alerts_enabled: true } },
+          headers: { "Origin" => ENV.fetch("WEB_ORIGINS", "http://localhost:5173").split(",").first }
+
+    expect(response).to have_http_status(:ok)
+    expect(membership.reload.email_alerts_enabled).to be(true)
+  end
+end
