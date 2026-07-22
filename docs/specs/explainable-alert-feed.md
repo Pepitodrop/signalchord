@@ -41,7 +41,7 @@ Status: specification — implementation not yet started
 1. **Alert↔Watchlist linkage.** No `watchlist_item_id`/`watchlist_id` column on `Alert`, and no upstream logic that would populate one meaningfully (the only "watchlist match" signal in the pipeline is the hardcoded `"Acme"` string check). Building a real linkage requires `services/nlp-pipeline` to actually resolve against an org's configured `WatchlistItem.target_stable_id`s — out of scope for this feature (would be inventing/rearchitecting the generation pipeline, explicitly disallowed).
 2. **Confidence scoring.** `services/velato-engine/engine.py:122-126` (`PolicyResult`) has no confidence output. Adding one means changing the Velato policy IR/engine — out of scope.
 3. **Evidence/graph-path content resolution.** `services/graph-query/app.py` exposes evidence only nested inside `GET /v1/entities/{stable_id}` (entity-scoped, capped at 50), and has no endpoint that takes a bare `evidence_id` or `relationship_id` and returns its content. Alerts aren't tied to a specific entity either, so even the entity-scoped endpoint isn't usable here. Building a real resolution endpoint is a `graph-query` change — out of scope.
-4. **Async/reliable job infrastructure.** Sidekiq is configured but not running anywhere (no worker process in docker-compose); `TODOS.md` already documents this as deliberately deferred. This feature does not stand it up.
+4. ~~**Async/reliable job infrastructure.** Sidekiq is configured but not running anywhere.~~ **Superseded during `/plan-eng-review` (see §5/§8/§9 and the review report at the end of this document).** An outside-voice review pass found that keeping email delivery synchronous inside `Internal::V1::AlertsController#create` created two real bugs (a silent, unrecoverable notification-drop on any mid-loop crash, and cross-tenant head-of-line blocking through the single-consumer `alert-projector`), and that Sidekiq is already gem-installed and already configured as the `ActiveJob` queue adapter — only a worker process and a Redis-connection initializer were missing. This feature now stands up that worker process (mirroring the existing `bin/outbox-publisher` sidecar-process pattern exactly), closing this gap rather than deferring it a second time.
 
 ## 4. Recommended minimum viable alert experience
 
@@ -50,22 +50,36 @@ Confirmed with the user (all recommended options):
 - **Feed scope**: organization-scoped, not watchlist-filtered. The existing `GET /api/v1/alerts` sort/shape is kept; sorting/prioritization uses the real existing fields (`alert_score` desc as primary key, `severity_code` desc as tiebreaker — both already on the model, no new column).
 - **Confidence**: not displayed as a numeric confidence value. `alert_score`/`severity_code` are relabeled in the UI as "prioritization score"/"severity" (what they actually are), with no separate confidence claim anywhere.
 - **Evidence depth**: "N evidence records referenced" + the raw ID list, replacing today's bare unlabeled `<pre>` dump — same underlying data, honestly framed, no fabricated content.
-- **Policy linkage**: shown where real — `Alert.policy_id` (real FK) resolves to `Policy#name`, plus `policy_trace` (jsonb: `policy_id`, `policy_version_id`, `execution_engine`, `policy_source_sha256` — confirmed these 4 keys are the ones the internal controller actually populates today; `trace_hash`/`instructions_executed` are named in the `.slice(...)` call but never present in the actual upstream payload, so they're always absent — a small pre-existing dead-key issue worth fixing while touching this line, not worth a separate spec item).
+- **Policy linkage**: shown where real — `Alert.policy_id` (real FK) resolves to `Policy#name`, plus `policy_trace` (jsonb: `policy_id`, `policy_version_id`, `execution_engine`, `policy_source_sha256`). The `.slice(...)` call in `Internal::V1::AlertsController#create` also names `trace_hash`/`instructions_executed`, which the upstream `velato-engine` payload never actually sends (always absent, dead code) — since this feature is already touching this exact line for the transaction-wrap change, drop those 2 dead key names from the `.slice()` call in the same diff (confirmed during review, zero extra cost).
 - **Real-time**: SSE stays out of scope (existing cookie-auth limitation, already gracefully degrading to "Offline" per `main.tsx:391-397`). Add simple client-side polling (`setInterval`, 30s) to the alert feed view so it still refreshes over time without depending on the broken SSE path — this is the "normal API loading provides a correct usable feed" option the brief explicitly allows.
-- **Email notification**: Rails-only, synchronous, triggered from the same request that already enqueues the push notification (`Internal::V1::AlertsController#create`). New `alert_email_deliveries` table for dedup/tracking. New `email_alerts_enabled` boolean on `Membership`, default `false` (opt-in).
+- **Email notification**: triggered from the same request that already enqueues the push notification (`Internal::V1::AlertsController#create`), but the actual send happens in a new Sidekiq-backed `AlertEmailNotificationJob` (one job per recipient), not inline in the request — revised during `/plan-eng-review`, see §5/§8/§9. New `alert_email_deliveries` table for dedup/tracking. New `email_alerts_enabled` boolean on `Membership`, default `false` (opt-in).
 - **"Qualifying alert"**: identical condition to the existing push path — newly created (`created`) and not suppressed (`!alert.suppressed?`). No new fabricated threshold.
 
 ## 5. Backend changes
 
+**Revised during `/plan-eng-review`**: the original design ran the email fan-out inline inside `Internal::V1::AlertsController#create` (synchronous `deliver_now` in a loop). An outside-voice review pass found this created a silent, unrecoverable notification-drop bug and cross-tenant head-of-line blocking (full detail in the review report at the end of this document). The revised design below moves the actual send into a Sidekiq job; the controller only enqueues cheap jobs (fast DB/Redis writes, no SMTP calls block the request).
+
+**Infrastructure (new):**
+- `apps/control-plane/config/initializers/sidekiq.rb`: `Sidekiq.configure_server`/`configure_client` pointed at `ENV.fetch("REDIS_URL", "redis://localhost:6379/0")` — the `REDIS_URL` env var and the underlying Valkey (Redis-compatible) container already exist in `docker-compose.yml`/`docker-compose.override.yml` for other purposes; this is the first time Rails itself connects to it.
+- New `sidekiq` service in `docker-compose.override.yml`, same image as `control-plane` (`infrastructure/docker/control-plane.Dockerfile`), `command: ["bundle", "exec", "sidekiq"]`, `depends_on: {control-plane: {condition: service_healthy}}` — this exactly mirrors the existing `outbox-publisher` service block (`docker-compose.override.yml:70-83`), which already establishes the "sidecar Ruby process, same image, different command" pattern for this app. No new deployment pattern is being invented.
+- Gemfile already has `sidekiq ~> 8.0` (`apps/control-plane/Gemfile:13`) and `config.active_job.queue_adapter = :sidekiq` is already set (`apps/control-plane/config/application.rb:12`) — no Gemfile change needed.
+
 **Models:**
 - `Membership`: add `email_alerts_enabled:boolean, null: false, default: false`.
-- New `AlertEmailDelivery` model (`apps/control-plane/app/models/alert_email_delivery.rb`): `belongs_to :organization`, `belongs_to :alert`, `belongs_to :membership`. `STATUSES = %w[pending delivered failed]`. Validates `status` inclusion, presence.
-- `Policy`: no schema change; add a `display_name` helper only if needed for serialization (likely just use `name` directly).
+- New `AlertEmailDelivery` model (`apps/control-plane/app/models/alert_email_delivery.rb`): `belongs_to :organization`, `belongs_to :alert`, `belongs_to :membership`. `STATUSES = %w[pending sending delivered failed]` — the 4-state shape is deliberately copied from `NotificationDelivery::STATUSES` (`apps/control-plane/app/models/notification_delivery.rb:2`) rather than inventing a new shape; `"sending"` is the in-flight marker used to detect the narrow ambiguous-outcome window described below. Validates `status` inclusion, presence.
+- `Policy`: no schema change; use `name` directly for serialization.
+
+**Job (new):**
+- `apps/control-plane/app/jobs/alert_email_notification_job.rb`: `AlertEmailNotificationJob < ApplicationJob`, `sidekiq_options retry: 5` (capped, not Sidekiq's 25-attempt/~3-week default — an alert email is time-sensitive context, a delivery attempt weeks late is close to useless; confirmed with the user during review). `perform(alert_id, membership_id)`:
+  1. Load `alert` and `membership`; `delivery = AlertEmailDelivery.find_or_initialize_by(alert:, membership:)`.
+  2. If `delivery.status == "delivered"`, return immediately (already sent — handles Sidekiq's at-least-once redelivery of the same job).
+  3. If `delivery.status == "sending"` (found already in this state — meaning a previous run got far enough to attempt the send but never confirmed the outcome, the one gap raw SMTP without a provider-side idempotency key can't fully close), do **not** resend automatically: mark `status: "failed", last_error: "ambiguous outcome from a previous attempt — resend requires manual confirmation"` and return. This is an honest, disclosed limitation, not a silent gap — the alternative (blindly resending) risks a real duplicate; this trades a narrow, rare "needs a human to check" state for a guarantee of never double-sending.
+  4. Otherwise: `delivery.update!(status: "sending")` (committed immediately, its own write), then `AlertMailer.alert_notification(membership.user, alert).deliver_now`. On success, `delivery.update!(status: "delivered")`. On any `StandardError`, `delivery.update!(status: "failed", last_error: error.message, attempts: delivery.attempts + 1)` and **re-raise** — unlike the synchronous design this supersedes, re-raising here is correct: Sidekiq's own retry mechanism (capped at 5 attempts) picks it up, instead of a hand-rolled swallow-and-log doing a worse job of the same thing.
 
 **Controllers:**
-- `Internal::V1::AlertsController#create`: after the existing `enqueue_notification` call, add `send_email_notifications(alert) if created && !alert.suppressed?` — loops over `alert.organization.memberships.enabled.where(email_alerts_enabled: true)`, for each: `AlertEmailDelivery.find_or_initialize_by(alert:, membership:)`, guarded by `new_record?` (idempotent — replays or duplicate calls never re-send), sets `status: "pending"`, `save!`, then attempts `AlertMailer.alert_notification(membership.user, alert).deliver_now` inside a `rescue StandardError` (mirrors `User#send_verification_email!`'s swallow-and-log pattern exactly) that updates the delivery row to `status: "delivered"` or `status: "failed", last_error: ...` — **never re-raises**, so a mail failure can never break alert creation or the push-notification path (confirmed necessary: `services/alert-projector/worker.py`'s uncaught-exception-crashes-and-Kafka-redelivers behavior means a raised exception here would crash the projector, and replaying the same `alert.created.v1` event afterward would hit `find_or_initialize_by(stable_id:)` and find the existing alert — `created` would be `false` on replay, so the notification/email path would silently never fire on retry; letting failures propagate would therefore make things worse, not better).
-- `Api::V1::MembershipsController` (or wherever the current user manages their own membership — check `apps/control-plane/app/controllers/api/v1/` for the existing self-service membership endpoint, extend it) or a new minimal `Api::V1::NotificationPreferencesController` with `PATCH` for `email_alerts_enabled` scoped to the caller's own membership (never another user's) — exact home decided during implementation by following whichever existing self-service pattern is closest.
-- `Api::V1::AlertsController#index`/`#show`: no route change; response now includes real fields only (no new fabricated fields). Confirm the existing `.order(created_at: :desc)` gets a documented, deliberate change to `.order(alert_score: :desc, severity_code: :desc)` for real prioritization (still overridable by `?unread=true`; keep `created_at` as a stable tiebreaker after severity).
+- `Internal::V1::AlertsController#create`: wraps `alert.save!` and the existing push-notification `OutboxEvent.enqueue!` in one `ActiveRecord::Base.transaction` (closes a pre-existing gap found during review — these were previously two separate non-transactional statements, so a raised `enqueue_notification` failure today leaves the alert committed but the notification silently lost with no retry, since a Kafka redelivery would find the alert already persisted and skip the whole block). After that transaction commits, loop over `alert.organization.memberships.enabled.where(email_alerts_enabled: true)` and call `AlertEmailNotificationJob.perform_later(alert.id, membership.id)` for each — enqueueing only, no SMTP calls in this request at all. This loop needs no `.includes(:user)` (the N+1 concern raised during review): it only touches `membership.id`, and each job independently loads exactly the one `membership.user` it needs.
+- `Api::V1::MeController#update` (new action, on the existing self-service `apps/control-plane/app/controllers/api/v1/me_controller.rb` — not a new controller; chosen during review over `Api::V1::MembershipsController` because that controller is `require_role!("owner", "admin")`-gated and built for admins managing *other* members, while `MeController` is already this app's unauthenticated-by-role "act on my own record" endpoint): updates `current_membership.email_alerts_enabled` only, never accepts a client-supplied membership/user id.
+- `Api::V1::AlertsController#index`: `.order(created_at: :desc)` → `.order(alert_score: :desc, severity_code: :desc, created_at: :desc)` (severity as tiebreaker, `created_at` as the final stable tiebreaker), plus `.includes(:policy)` (found during review — serializing the new `policy_name` field without eager-loading would be an N+1 across up to 250 alerts).
 
 **Mailer:**
 - New `AlertMailer#alert_notification(user, alert)` (`apps/control-plane/app/mailers/alert_mailer.rb`), subject e.g. "New SignalChord alert: {alert.title}". HTML + text views. No shared mailer layout exists today (`OnboardingMailer` has none either) — this feature does not introduce one; each view stays self-contained, matching the existing convention.
@@ -106,18 +120,25 @@ class CreateAlertEmailDeliveries < ActiveRecord::Migration[8.0]
 end
 ```
 
+No migration change from the Sidekiq revision — `status` stays a bare string column; the 4th state (`"sending"`) is an application-level value (`AlertEmailDelivery::STATUSES`), not a schema change.
+
 ## 8. Notification and email design
 
-- **Trigger point**: `Internal::V1::AlertsController#create`, same request that already enqueues the push `OutboxEvent`, same qualifying condition (`created && !alert.suppressed?`).
-- **Fan-out**: one email attempt per enabled membership in the alert's organization (`organization.memberships.enabled.where(email_alerts_enabled: true)`) — not one email per alert regardless of preference; a member who never opted in never receives anything, ever.
-- **Delivery**: synchronous `AlertMailer.alert_notification(...).deliver_now`, wrapped in `rescue StandardError`, never re-raised (see §5 for why re-raising would be actively harmful given the Kafka-redelivery/idempotent-upsert interaction).
-- **Content**: alert title, prioritization score/severity, resolved policy name (where `policy_id` present), evidence count, link to the alert in the web app (`/` — no deep-linkable alert detail route exists since this app has no router; link to the dashboard root, consistent with how the rest of this app has no per-record URLs).
+**Revised during `/plan-eng-review`** — see the rewritten §5 and the review report for why this moved off the original synchronous design.
+
+- **Trigger point**: `Internal::V1::AlertsController#create` enqueues `AlertEmailNotificationJob.perform_later(alert.id, membership.id)` per opted-in membership, same qualifying condition as the push path (`created && !alert.suppressed?`). Enqueueing is a fast Redis write, not an SMTP call — the controller's response time is no longer coupled to recipient count or mail-provider latency at all, which also resolves the cross-tenant head-of-line-blocking risk the original design had (a slow/degraded mail provider can no longer stall every other organization's alert ingestion, since `alert-projector`'s HTTP call to `/internal/v1/alerts` never touches SMTP).
+- **Fan-out**: one job, and therefore one email attempt, per enabled membership in the alert's organization with `email_alerts_enabled: true` — a member who never opted in never receives anything, ever.
+- **Delivery**: `AlertMailer.alert_notification(...).deliver_now` inside `AlertEmailNotificationJob#perform` (already running in a background worker process, so `deliver_now` — not `deliver_later` — is correct; queuing a mailer job from inside a job would double-queue for no benefit).
+- **Content**: alert title, prioritization score/severity, resolved policy name (where `policy_id` present), evidence count, link to the dashboard root (no deep-linkable alert detail route exists since this app has no router).
 
 ## 9. Deduplication and retry design
 
-- **Dedup**: DB-level unique index `[alert_id, membership_id]` on `alert_email_deliveries`, enforced identically to `NotificationDelivery`'s `[notification_endpoint_id, event_id]` pattern. `find_or_initialize_by(alert:, membership:)` + `new_record?` guard means a replayed `alert.created.v1` event, or any accidental double-call, can never send a second email for the same (alert, member) pair — matches "do not send duplicate emails" exactly.
-- **Retry model — honest scope**: this feature does **not** add automatic background retry (no job infra is stood up, matching the TODOS.md-documented deferral). A failed send is recorded (`status: "failed", last_error: ..., attempts: attempts + 1`) and is **visible** (surfaced via the alert's serialized response, and/or a small internal query — exact surfacing decided in implementation, at minimum a Rails console/rake-task-queryable state) but not silently dropped, satisfying "do not silently swallow delivery failures" without inventing a retry pipeline that doesn't exist elsewhere in this codebase. A manual re-attempt (rake task or repeat internal call) is safe to run any number of times because of the dedup index — re-running only affects rows still in `pending`/`failed` state (a `delivered` row is left untouched, so manual retries can never double-send).
-- **Why not real automatic retry**: confirmed via `services/alert-projector/worker.py` that Kafka-level redelivery of `alert.created.v1` — the only "free" retry mechanism available without new infra — would not even re-attempt this logic on replay, since `find_or_initialize_by(stable_id:)` on the Alert itself would short-circuit `created` to `false`. True automatic retry would require new job/queue infrastructure, which is out of scope per "if no real background pipeline exists, do not invent one."
+**Revised during `/plan-eng-review`.**
+
+- **Dedup**: DB-level unique index `[alert_id, membership_id]` on `alert_email_deliveries`, enforced identically to `NotificationDelivery`'s `[notification_endpoint_id, event_id]` pattern. `find_or_initialize_by(alert:, membership:)` plus the job's own `status` state machine (see §5, step 2/3) means: a `"delivered"` row is never resent (handles Sidekiq's at-least-once job redelivery), and a job that died between "sent" and "confirmed" (the `"sending"` state found already set) is treated as ambiguous and surfaced for manual review rather than blindly resent — matches "do not send duplicate emails" for every case that can be distinguished, and is honest about the one narrow case (send succeeded, confirmation write failed) that raw SMTP without a provider-side idempotency key cannot fully resolve automatically.
+- **Retry model**: real automatic retry, via Sidekiq's built-in mechanism, capped at 5 attempts (confirmed with the user — shorter than Sidekiq's 25-attempt/~3-week default, since alert emails are time-sensitive). This supersedes the original "no automatic retry, matches TODOS.md's deferred stance" position — the review found that position was compounding a debt TODOS.md already named the fix for (the onboarding mailer's own sync-SMTP-blocks-a-request problem), rather than avoiding scope creep.
+- **Failure visibility**: a `"failed"` `AlertEmailDelivery` row (whether from an exhausted retry or an ambiguous-outcome detection) is queryable and does not silently disappear — exact UI/API surfacing of failed deliveries decided in implementation (at minimum, queryable via Rails console/a small internal query; a dedicated UI surface is not required by the acceptance criteria).
+- **Why this no longer depends on Kafka redelivery semantics at all**: the original design's retry story was entangled with `alert.created.v1`'s redelivery-on-crash behavior (and the review found that entanglement was itself a bug — see the review report). Moving the send into a Sidekiq job fully decouples email retry from Kafka/alert-creation semantics: a job failing and retrying has no effect on whether the alert row exists or whether the push notification already fired.
 
 ## 10. Security and tenant-isolation risks
 
@@ -134,8 +155,9 @@ end
 | Model | `AlertEmailDelivery` validations, dedup uniqueness (scoped to alert+membership, allows same alert across different members) | +3 |
 | Model | `Membership#email_alerts_enabled` default, column presence | +1 |
 | Request | `spec/requests/alerts_spec.rb` (new — currently missing entirely): index sort order (`alert_score` desc), unread filter, show/update tenant isolation regression (already covered by `tenant_isolation_spec.rb`, add model-level coverage instead) | +4 |
-| Request | `Internal::V1::AlertsController#create` — email fan-out: sends exactly one email per opted-in membership, sends zero when no membership opted in, never sends for a suppressed alert, never re-sends on a repeated create call with the same `stable_id` (idempotency), a mailer exception is caught and recorded as `failed` without raising/affecting the alert row or the push-notification enqueue | +5 |
-| Request | Preference update endpoint — updates only the caller's own membership, rejects a client-supplied membership/user id for another member, tenant-isolated | +3 |
+| Request | `Internal::V1::AlertsController#create` — enqueues exactly one `AlertEmailNotificationJob` per opted-in membership, enqueues zero when no membership opted in, never enqueues for a suppressed alert, never enqueues on a repeated create call with the same `stable_id` (idempotency), `alert.save!` rolls back if `OutboxEvent.enqueue!` raises (new transaction wrap — regression-adjacent, this changes existing rollback behavior), `alert.save!` also rolls back if `AlertEmailNotificationJob.perform_later` raises (e.g. Redis unavailable — found during review's failure-mode pass, confirms the atomic-or-nothing behavior is real, not just assumed) | +6 |
+| Job | `AlertEmailNotificationJob` — happy path sends and marks `delivered`; a `deliver_now` exception marks `failed` with `last_error` and re-raises (verify Sidekiq retry picks it up); a `"delivered"` row short-circuits with zero send attempts (redelivery-safe); a `"sending"` row is marked `failed` with the ambiguous-outcome message and does **not** attempt a send (the no-duplicate-send guarantee) | +4 |
+| Request | `Api::V1::MeController#update` (new action) — updates only the caller's own membership, ignores/rejects a client-supplied membership/user id for another member, tenant-isolated, CSRF-checked (cookie-authed mutating request) | +4 |
 | Mailer | `AlertMailer#alert_notification` — recipient, subject, body includes title/score/policy name where present, omits policy section when `policy_id` is nil | +3 |
 | Frontend unit | Pure-function extraction for: prioritization sort comparator, evidence-count/label derivation, poll-interval-driven reload logic (DOM-free, matching this codebase's established test convention — no component-rendering tests) | +3 |
 | E2E (Playwright) | Extend an existing or add a new flow: seed an alert via the internal endpoint in test setup (or via existing fixtures), verify it appears in the feed sorted correctly, verify detail view shows honest evidence-count/no-confidence framing, verify enabling the email preference and receiving exactly one Mailpit email for a new qualifying alert (reusing the existing Mailpit helper from `e2e/tests/helpers/mailpit.ts`) | +1 flow |
@@ -143,28 +165,34 @@ end
 
 ## 12. Phased implementation plan
 
-1. **Phase 1 — backend**: migrations, `Membership#email_alerts_enabled`, `AlertEmailDelivery` model, `AlertMailer`, `Internal::V1::AlertsController` email fan-out, `Api::V1::AlertsController` sort-order change + serializer additions (`policy_name`, cleaned-up `policy_trace` slice), preference-update endpoint. Tests alongside, per §11 backend rows.
-2. **Phase 2 — frontend**: relabeled alert feed/detail (prioritization score, evidence count, policy name), 30s polling, preference toggle UI. Tests alongside (pure-function extraction).
-3. **Phase 3 — e2e**: extend Playwright coverage per §11's e2e row.
-4. **Phase 4 — verification**: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` locally; Rails specs, RuboCop-equivalent, and the full e2e run verified via CI (no Ruby/Docker in this sandbox, same constraint as the prior two features).
+1. **Phase 1 — infra**: `config/initializers/sidekiq.rb`, new `sidekiq` service in `docker-compose.override.yml` (mirrors `outbox-publisher`). No product code yet — verify the worker process boots and connects to Redis/Valkey before building on top of it.
+2. **Phase 2 — backend**: migrations, `Membership#email_alerts_enabled`, `AlertEmailDelivery` model, `AlertEmailNotificationJob`, `AlertMailer`, `Internal::V1::AlertsController` transaction wrap + job enqueueing, `Api::V1::AlertsController` sort-order change + `.includes(:policy)` + serializer additions, `Api::V1::MeController#update`. Tests alongside, per §11 backend/job rows.
+3. **Phase 3 — frontend**: relabeled alert feed/detail (prioritization score, evidence count, policy name), 30s polling, preference toggle UI. Tests alongside (pure-function extraction).
+4. **Phase 4 — e2e**: extend Playwright coverage per §11's e2e row.
+5. **Phase 5 — verification**: `pnpm typecheck && pnpm lint && pnpm test && pnpm build` locally; Rails specs, RuboCop-equivalent, and the full e2e run (including the new `sidekiq` service actually running) verified via CI (no Ruby/Docker in this sandbox, same constraint as the prior two features).
 
 ## 13. Files likely to change
 
 | File | Change |
 |---|---|
+| `apps/control-plane/config/initializers/sidekiq.rb` | New — Redis connection config |
+| `docker-compose.override.yml` | New `sidekiq` service, mirroring `outbox-publisher` |
 | `apps/control-plane/db/migrate/008_add_email_alerts_enabled_to_memberships.rb` | New migration |
 | `apps/control-plane/db/migrate/009_create_alert_email_deliveries.rb` | New migration |
 | `apps/control-plane/app/models/membership.rb` | New column (no code change needed beyond schema unless validating) |
 | `apps/control-plane/app/models/alert_email_delivery.rb` | New model |
+| `apps/control-plane/app/jobs/alert_email_notification_job.rb` | New job |
 | `apps/control-plane/app/mailers/alert_mailer.rb` | New mailer |
 | `apps/control-plane/app/views/alert_mailer/alert_notification.html.erb` / `.text.erb` | New views |
-| `apps/control-plane/app/controllers/internal/v1/alerts_controller.rb` | Add email fan-out after existing `enqueue_notification` |
-| `apps/control-plane/app/controllers/api/v1/alerts_controller.rb` | Sort order, serializer additions |
-| `apps/control-plane/app/controllers/api/v1/*` (preference endpoint — exact controller decided in implementation) | New action or new controller |
-| `apps/control-plane/config/routes.rb` | New preference route |
+| `apps/control-plane/app/controllers/internal/v1/alerts_controller.rb` | Transaction wrap around `alert.save!`/push-enqueue, replace inline email send with per-membership job enqueue |
+| `apps/control-plane/app/controllers/api/v1/alerts_controller.rb` | Sort order, `.includes(:policy)`, serializer additions |
+| `apps/control-plane/app/controllers/api/v1/me_controller.rb` | New `update` action for the preference toggle |
+| `apps/control-plane/config/routes.rb` | New `PATCH /api/v1/me` route |
 | `apps/control-plane/spec/models/alert_email_delivery_spec.rb` | New |
+| `apps/control-plane/spec/jobs/alert_email_notification_job_spec.rb` | New |
 | `apps/control-plane/spec/requests/alerts_spec.rb` | New |
 | `apps/control-plane/spec/requests/internal_alerts_spec.rb` (or extend existing) | New/extended |
+| `apps/control-plane/spec/requests/me_spec.rb` | Extended (new `update` action tests) |
 | `apps/control-plane/spec/mailers/alert_mailer_spec.rb` | New |
 | `apps/control-plane/spec/requests/tenant_isolation_spec.rb` | Extended |
 | `apps/web/src/main.tsx` | Alert feed/detail relabeling, polling, preference toggle |
@@ -177,16 +205,45 @@ end
 
 1. `GET /api/v1/alerts` returns alerts sorted by `alert_score` desc, `severity_code` desc, `created_at` desc as a stable tiebreaker.
 2. Alert detail view shows title, summary, prioritization score/severity (never labeled "confidence"), evidence count + raw IDs, resolved policy name where `policy_id` is present, and an honest "no policy linkage" state where it is nil.
-3. A new alert for an organization with zero opted-in memberships sends zero emails.
-4. A new alert for an organization with N opted-in memberships sends exactly N emails, one per member, never more than one per (alert, member) pair even under a replayed/duplicated internal create call.
-5. A suppressed alert never triggers an email, matching the existing push-notification behavior.
-6. A mailer exception during send is caught, recorded as `status: "failed"` with `last_error` populated, and does not affect the alert row, the push-notification enqueue, or the internal endpoint's response status.
-7. The email preference toggle updates only the calling user's own membership; a request attempting to target another membership/user is rejected.
+3. A new alert for an organization with zero opted-in memberships enqueues zero `AlertEmailNotificationJob`s.
+4. A new alert for an organization with N opted-in memberships enqueues exactly N jobs, one per member, and each job sends exactly once — never more than one delivered email per (alert, member) pair, even under Sidekiq's at-least-once job redelivery or a replayed/duplicated internal create call.
+5. A suppressed alert never enqueues a push notification or an email job, matching the existing (extended) guard.
+6. A job's `deliver_now` exception is recorded as `status: "failed"` with `last_error` populated and re-raised so Sidekiq retries it (capped at 5 attempts); it never affects the alert row, the push-notification enqueue, or `Internal::V1::AlertsController#create`'s response (the job is fully decoupled from the request/response cycle).
+7. The email preference toggle (`PATCH /api/v1/me`) updates only the calling user's own membership; a request attempting to target another membership/user is rejected.
 8. The alert feed view refreshes at least every 30 seconds via polling, independent of SSE connectivity state.
 9. All new Postgres objects (`email_alerts_enabled`, `alert_email_deliveries`) are additive; no existing endpoint's response shape loses a field or changes an existing field's meaning.
 10. Tenant isolation holds for every new/changed endpoint and table (verified by extended `tenant_isolation_spec.rb`).
-11. `pnpm typecheck && pnpm lint && pnpm test && pnpm build` pass locally; all CI checks (including `rails`) pass on the opened PR.
+11. If `OutboxEvent.enqueue!` (push notification) raises, the wrapping transaction rolls back `alert.save!` too — a Kafka redelivery of the same `alert.created.v1` event then retries cleanly instead of silently skipping the notification path forever.
+12. The `sidekiq` docker-compose service boots successfully and processes a real job end-to-end in CI/local verification.
+13. `pnpm typecheck && pnpm lint && pnpm test && pnpm build` pass locally; all CI checks (including `rails`) pass on the opened PR.
+
+## TODOS.md updates (from `/plan-eng-review`)
+
+Four items confirmed with the user to add to `TODOS.md` when implementation starts (the fifth candidate — the stale SSE-cookie-limitation comment — is built directly into this PR instead, not deferred):
+
+1. **Real evidence/graph-path content resolution.** `services/graph-query` needs a bare evidence/relationship-by-ID lookup endpoint; today only entity-scoped resolution exists and `Alert` has no entity reference to hang it on. Biggest remaining honesty gap in the alert-explainability story. Depends on deciding how `Alert` would reference a specific entity/evidence set (doesn't today).
+2. **Real Alert↔Watchlist linkage.** `services/nlp-pipeline` needs to match extracted entities against an org's actual `WatchlistItem.target_stable_id`s (replacing the current hardcoded `"Acme" in text` heuristic), plus a real `watchlist_item_id` FK on `Alert`. This is the literal premise of the feature's target journey, currently backed by zero real data. Depends on `nlp-pipeline` gaining a way to fetch an org's current watchlist items.
+3. **Real confidence scoring.** `services/velato-engine`'s `PolicyResult` has no confidence field, and the scoring inputs feeding `alert_score` are partly synthetic. An open research question (what would real confidence even be computed from), not just an engineering task — bigger than items 1/2.
+4. **Alert-email fan-out failure visibility UI.** A dedicated UI/API surface for viewing and manually retrying `failed` `AlertEmailDelivery` rows beyond the current console/internal-query-only visibility.
 
 ## 15. Recommended next gstack command
 
 `/plan-eng-review` — this spec introduces a new cross-cutting mailer/delivery-tracking pattern (`AlertEmailDelivery`) and a controller-level fan-out loop inside an internal, unauthenticated-by-user endpoint; an engineering review pass on the exact swallow/rescue boundaries and the sort-order change to a public API before implementation starts is worth the cheap up-front cost, matching the pattern used for the closed-beta onboarding feature.
+
+**Update after review: `/plan-eng-review` has now run and cleared this spec** (see report below). Next: proceed to implementation, or run `/plan-design-review` first if the new preference-toggle UI and relabeled alert detail view warrant a dedicated visual pass before coding.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 5 findings (2 architecture, 1 code quality, 2 performance), all resolved; 19 test gaps mapped to required tests + 1 added during failure-mode review |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | not run |
+
+- **CODEX:** not run — Codex CLI installed but not authenticated in this sandbox (401 Unauthorized on the API). Fell back to a Claude subagent for the outside voice per the documented fallback.
+- **CROSS-MODEL:** The outside voice (Claude subagent, independent context, verified all load-bearing claims against the actual repo rather than trusting the plan's prose) found 3 problems the primary review missed: (1) the primary review's own transaction/dedup fix for duplicate-send prevention introduced a worse silent, unrecoverable notification-drop bug via the `created` guard on Kafka redelivery; (2) the accepted "bump the projector timeout" mitigation for synchronous email-send latency doesn't fix cross-tenant head-of-line blocking through the single `alert-projector` consumer, and arguably makes it worse; (3) strategic — building bespoke synchronous retry/dedup tracking compounds the exact sync-SMTP-blocks-a-request debt `TODOS.md` already named "stand up Sidekiq" as the fix for, on a different mailer, in this same codebase. User accepted the outside voice's recommendation on all three (folded into one architecture decision: move email delivery to a Sidekiq-backed `AlertEmailNotificationJob`), superseding the original "Rails-only synchronous" design locked in during `/spec`. This is the correct outcome of a cross-model disagreement — two independent reviews converged on a better architecture than either found alone.
+- **VERDICT:** ENG REVIEW CLEARED — ready to implement. CEO/Design/DX reviews not run (optional; see Next Steps below).
+
+NO UNRESOLVED DECISIONS
