@@ -10,7 +10,9 @@ require "rails_helper"
 # one connection/transaction, making other threads unable to see committed
 # data) and cleans up manually instead.
 RSpec.describe "organizations#create concurrency", type: :request do
-  self.use_transactional_fixtures = false
+  # `use_transactional_fixtures` is the old (pre-Rails 5.1) name; the current
+  # ActiveSupport::TestCase / RSpec::Rails attribute is use_transactional_tests.
+  self.use_transactional_tests = false
 
   after do
     Membership.delete_all
