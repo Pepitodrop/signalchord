@@ -12,7 +12,7 @@ export interface SourceRecord { id: string; name: string; endpoint: string; adap
 export interface GovernanceRequestRecord { id: string; request_type: "tenant_export" | "tenant_deletion" | "source_takedown"; source_id?: string; idempotency_key: string; status: "accepted" | "completed"; parameters: Record<string, unknown>; result: Record<string, unknown>; created_at: string; }
 export interface WatchlistItemRecord { id?: string; target_kind: string; target_stable_id: string; relevance_weight: number | string; }
 export interface WatchlistRecord { id: string; name: string; description?: string; items: WatchlistItemRecord[]; }
-export interface AlertRecord { id: string; stable_id: string; title: string; summary?: string; alert_score: number; severity_code: number; routing_code: number; suppressed: boolean; evidence_ids: string[]; graph_path_ids: string[]; policy_trace: Record<string, unknown>; review_status: string; relevance_feedback?: string; read_at?: string; created_at: string; }
+export interface AlertRecord { id: string; stable_id: string; title: string; summary?: string; alert_score: number; severity_code: number; routing_code: number; suppressed: boolean; evidence_ids: string[]; graph_path_ids: string[]; policy_trace: Record<string, unknown>; policy_name?: string | null; review_status: string; relevance_feedback?: string; read_at?: string; created_at: string; }
 export interface PolicyVersionRecord { id: string; version_number: number; engine: string; status: string; source_sha256?: string; ir_sha256?: string; source_size?: number; decompiled_source?: string; }
 export interface PolicyRecord { id: string; name: string; description?: string; active: boolean; policy_versions?: PolicyVersionRecord[]; }
 export interface InvestigationRecord { id: string; name: string; description?: string; query_template?: string; query_parameters: Record<string, unknown>; graph_layout: Record<string, unknown>; pinned_evidence_ids: string[]; }
@@ -29,6 +29,7 @@ export interface MeResponse {
   user: {id: string; email: string; display_name?: string};
   organization: {id: string; name: string; slug: string};
   role: string | null;
+  email_alerts_enabled?: boolean | null;
   onboarding_state: OnboardingState;
 }
 export interface WebSessionResponse { status: "authenticated" | "workspace_required"; role?: string; }
@@ -75,6 +76,9 @@ export class SignalChordClient {
     );
   }
   me() { return this.request<MeResponse>("/api/v1/me"); }
+  updateMe(membership: {email_alerts_enabled: boolean}) {
+    return this.request<{email_alerts_enabled: boolean}>("/api/v1/me", {method: "PATCH", body: JSON.stringify({membership})});
+  }
   organizations() { return this.request<Array<{id: string; name: string; slug: string}>>("/api/v1/organizations"); }
   sources() { return this.request<SourceRecord[]>("/api/v1/sources"); }
   createSource(source: Partial<SourceRecord>) { return this.request<SourceRecord>("/api/v1/sources", {method: "POST", body: JSON.stringify({source})}); }
