@@ -2,10 +2,18 @@
 # recipient (not one job looping over all recipients) so a single
 # recipient's failure/retry never touches another recipient's delivery.
 #
+# Eligibility is deliberately checked again when the job executes. A member
+# can opt out, be disabled, or otherwise become ineligible after the job was
+# enqueued. Ineligible deliveries are recorded as terminal "skipped" results
+# and are neither sent nor retried.
+#
 #   perform(alert_id, membership_id)
 #     |
-#     +-- delivery.status == "delivered"?
-#     |     -> return (already sent; Sidekiq at-least-once redelivery-safe)
+#     +-- delivery.status == "delivered" or "skipped"?
+#     |     -> return (terminal; redelivery-safe)
+#     |
+#     +-- recipient no longer eligible?
+#     |     -> mark "skipped" with an observable reason and return
 #     |
 #     +-- delivery.status == "sending"?
 #     |     -> a previous run got far enough to attempt the send but never
@@ -31,7 +39,12 @@ class AlertEmailNotificationJob < ApplicationJob
     delivery = AlertEmailDelivery.find_or_initialize_by(alert:, membership:)
     delivery.organization ||= alert.organization
 
-    return if delivery.status == "delivered"
+    return if %w[delivered skipped].include?(delivery.status)
+
+    if (reason = ineligibility_reason(alert, membership))
+      delivery.update!(status: "skipped", last_error: reason)
+      return
+    end
 
     if delivery.status == "sending"
       delivery.update!(status: "failed", last_error: AMBIGUOUS_OUTCOME_ERROR)
@@ -47,5 +60,13 @@ class AlertEmailNotificationJob < ApplicationJob
       delivery.update!(status: "failed", last_error: error.message, attempts: delivery.attempts + 1)
       raise
     end
+  end
+
+  private
+
+  def ineligibility_reason(alert, membership)
+    return "membership belongs to a different organization" if membership.organization_id != alert.organization_id
+    return "membership is disabled" if membership.disabled?
+    return "member opted out of alert emails" unless membership.email_alerts_enabled?
   end
 end
