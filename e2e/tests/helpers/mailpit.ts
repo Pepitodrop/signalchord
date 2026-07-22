@@ -47,3 +47,31 @@ async function tryFetchVerificationLink(email: string): Promise<string | null> {
 export async function clearMailpit(): Promise<void> {
   await fetch(`${MAILPIT_URL}/api/v1/messages`, {method: "DELETE"});
 }
+
+// Polls until exactly `count` messages have been sent to `email` with a
+// subject containing `subjectIncludes`, then returns — used to assert "one
+// notification per qualifying alert" without a race against Mailpit's own
+// delivery/indexing latency. Throws if the count is exceeded (a duplicate
+// send) or never reached within the timeout.
+export async function waitForMessageCount(
+  email: string,
+  subjectIncludes: string,
+  count: number,
+  {timeoutMs = 10_000, intervalMs = 500} = {},
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const matched = await countMatchingMessages(email, subjectIncludes);
+    if (matched === count) return;
+    if (matched > count) throw new Error(`expected ${count} message(s) to ${email}, found ${matched} (possible duplicate send)`);
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  throw new Error(`expected ${count} message(s) to ${email} matching "${subjectIncludes}" within ${timeoutMs}ms, condition never met`);
+}
+
+async function countMatchingMessages(email: string, subjectIncludes: string): Promise<number> {
+  const search = await fetch(`${MAILPIT_URL}/api/v1/search?query=${encodeURIComponent(`to:${email} subject:"${subjectIncludes}"`)}`);
+  if (!search.ok) return 0;
+  const {messages} = (await search.json()) as MailpitSearchResponse;
+  return messages.length;
+}
