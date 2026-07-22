@@ -30,7 +30,10 @@ module Api
       def onboarding_state_for(user)
         return "verification_required" unless user.email_verified?
         return "workspace_required" unless user.memberships.enabled.exists?
-        return "first_watchlist_required" unless current_organization.watchlists.exists?
+        # An empty Watchlist shell (no items) doesn't satisfy onboarding —
+        # the journey requires a real monitored subject, not just a name.
+        # Single indexed EXISTS query via the join, no N+1.
+        return "first_watchlist_required" unless current_organization.watchlists.joins(:watchlist_items).exists?
 
         "complete"
       end
