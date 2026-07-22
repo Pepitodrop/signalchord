@@ -11,6 +11,13 @@ module SignalChordControlPlane
     config.active_record.default_timezone = :utc
     config.active_job.queue_adapter = :sidekiq
     config.generators.system_tests = nil
-    config.filter_parameters += %i[password token authorization midi_data]
+    config.filter_parameters += %i[password token authorization midi_data beta_access_code]
+
+    # config.api_only strips ActionDispatch::Cookies from the default
+    # middleware stack (API-only apps normally use bearer tokens, not
+    # cookies). The closed-beta web session needs a real httpOnly cookie, so
+    # add it back explicitly — controllers additionally need
+    # `include ActionController::Cookies` (see CookieSession concern).
+    config.middleware.use ActionDispatch::Cookies
   end
 end

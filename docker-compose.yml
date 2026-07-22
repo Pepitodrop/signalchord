@@ -120,6 +120,14 @@ services:
     environment: {GF_SECURITY_ADMIN_USER: admin, GF_SECURITY_ADMIN_PASSWORD: signalchord-dev, GF_AUTH_ANONYMOUS_ENABLED: "false"}
     volumes: ["grafana-data:/var/lib/grafana", "./infrastructure/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro"]
     depends_on: [prometheus]
+  mailpit:
+    image: axllent/mailpit:v1.22.3
+    ports: ["${MAILPIT_SMTP_HOST_PORT:-1025}:1025", "${MAILPIT_UI_HOST_PORT:-8025}:8025"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8025/api/v1/info >/dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
   sample-source:
     image: nginx:1.28.0-alpine
     profiles: [slice]

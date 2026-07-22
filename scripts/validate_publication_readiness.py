@@ -38,6 +38,7 @@ REQUIRED_FILES = (
     "scripts/single-server/restore-v1.sh",
     "scripts/single-server/acceptance.sh",
     "apps/web/src/main.tsx",
+    "apps/web/src/routes/LoginPage.tsx",
     "apps/mobile/app/index.tsx",
     "apps/mobile/lib/session.tsx",
 )
@@ -154,7 +155,11 @@ def validate(root: Path = ROOT) -> None:
         if marker not in acceptance:
             failures.append(f"single-server acceptance must retain control: {marker}")
 
-    web_screen = read(root, "apps/web/src/main.tsx")
+    # The web sign-in form moved from main.tsx into its own route component
+    # as part of the closed-beta onboarding work (main.tsx now only handles
+    # top-level session wiring and routing) — check the file that actually
+    # renders the login form.
+    web_screen = read(root, "apps/web/src/routes/LoginPage.tsx")
     forbidden_web_defaults = (
         'useState("analyst@signalchord.local")',
         'useState("signalchord-demo-password")',

@@ -21,6 +21,8 @@ module ProductionConfig
     errors.concat(validate_internal_token(env))
     errors.concat(validate_secret(env, "SECRET_KEY_BASE", 64))
     errors.concat(validate_secret(env, "NOTIFICATION_TOKEN_ENCRYPTION_KEY", 32))
+    errors.concat(validate_beta_access_code(env))
+    errors.concat(validate_smtp(env))
     raise "insecure production configuration: #{errors.join('; ')}" if errors.any?
   end
 
@@ -107,6 +109,25 @@ module ProductionConfig
 
   def validate_secret(env, key, min_length)
     env[key].to_s.length >= min_length ? [] : ["#{key} must be a managed secret of at least #{min_length} characters"]
+  end
+
+  def validate_beta_access_code(env)
+    value = env["BETA_ACCESS_CODE"].to_s
+    return ["BETA_ACCESS_CODE is required"] if value == ""
+    return ["BETA_ACCESS_CODE must not use the local development placeholder"] if value == "replace-me-with-a-real-shared-secret"
+    return ["BETA_ACCESS_CODE must be at least 16 characters"] if value.length < 16
+
+    []
+  end
+
+  def validate_smtp(env)
+    host = env["SMTP_HOST"].to_s
+    # local_address? assumes a non-empty host (matches every other call site
+    # in this file, e.g. validate_https_url returns early the same way) —
+    # "".split(":", 2) is [], not [""], so .first.delete_prefix would raise.
+    return ["SMTP_HOST is required"] if host == ""
+
+    local_address?(host) || host == "mailpit" ? ["SMTP_HOST cannot point at localhost or a local mail-catcher"] : []
   end
 
   def truthy?(value)

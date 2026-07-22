@@ -3,8 +3,14 @@ require "rails_helper"
 RSpec.describe "tenant isolation", type: :request do
   let!(:alpha) { Organization.create!(name: "Alpha", slug: "alpha") }
   let!(:beta) { Organization.create!(name: "Beta", slug: "beta") }
-  let!(:alpha_user) { User.create!(email: "alpha@example.com", password: "correct-horse-battery-staple", display_name: "Alpha Analyst") }
-  let!(:beta_user) { User.create!(email: "beta@example.com", password: "correct-horse-battery-staple", display_name: "Beta Analyst") }
+  let!(:alpha_user) do
+    User.create!(email: "alpha@example.com", password: "correct-horse-battery-staple", display_name: "Alpha Analyst",
+                 email_verified_at: Time.current)
+  end
+  let!(:beta_user) do
+    User.create!(email: "beta@example.com", password: "correct-horse-battery-staple", display_name: "Beta Analyst",
+                 email_verified_at: Time.current)
+  end
   let!(:alpha_membership) { Membership.create!(organization: alpha, user: alpha_user, role: "admin") }
   let!(:beta_membership) { Membership.create!(organization: beta, user: beta_user, role: "admin") }
   let!(:token) do
@@ -164,6 +170,78 @@ RSpec.describe "tenant isolation", type: :request do
     expect(response.headers["X-Frame-Options"]).to eq("DENY")
     expect(response.headers["Referrer-Policy"]).to eq("no-referrer")
     expect(response.headers["Permissions-Policy"]).to include("camera=()")
+  end
+
+  it "does not authenticate into its former organization once a membership is disabled" do
+    # auth_headers'/token's ApiToken.issue! is org-level (no user:), so the
+    # disabled-membership check (which only applies to a user-scoped token)
+    # has nothing to reject there. Issue a real per-user token to exercise it.
+    _record, user_plaintext = ApiToken.issue!(organization: alpha, user: alpha_user, name: "user session", scopes: ["*"])
+    alpha_membership.update!(disabled_at: Time.current)
+
+    get "/api/v1/sources", headers: { "Authorization" => "Bearer #{user_plaintext}" }
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  # These four use a real login round-trip to obtain the session cookie
+  # rather than hand-constructing an encrypted cookie value — request specs
+  # can't write cookies.encrypted directly (the integration session's
+  # `cookies` helper is a plain Rack::Test::CookieJar, not the richer jar a
+  # real controller response builds), and a real login is the only
+  # legitimate way a cookie session gets created anyway.
+  def login_as_alpha_via_cookie
+    post "/api/v1/auth/web_session", params: { email: alpha_user.email, password: "correct-horse-battery-staple" }
+  end
+
+  it "isolates tenants identically whether authenticated via header or cookie" do
+    login_as_alpha_via_cookie
+
+    get "/api/v1/sources"
+    ids = JSON.parse(response.body).map { |source| source.fetch("id") }
+    expect(ids).to include(alpha_source.id)
+    expect(ids).not_to include(beta_source.id)
+
+    get "/api/v1/watchlists/#{beta_watchlist.id}"
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it "rejects a cookie-authenticated mutating request from a mismatched Origin (CSRF)" do
+    login_as_alpha_via_cookie
+
+    patch "/api/v1/sources/#{alpha_source.id}",
+          params: { source: { name: "modified via csrf" } },
+          headers: { "Origin" => "https://attacker.example" }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(alpha_source.reload.name).to eq("Alpha feed")
+  end
+
+  it "rejects a cookie-authenticated mutating request with no Origin header at all (fail closed)" do
+    login_as_alpha_via_cookie
+
+    patch "/api/v1/sources/#{alpha_source.id}", params: { source: { name: "modified via csrf" } }
+
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it "allows a cookie-authenticated mutating request from a matching Origin" do
+    login_as_alpha_via_cookie
+
+    patch "/api/v1/sources/#{alpha_source.id}",
+          params: { source: { name: "modified legitimately" } },
+          headers: { "Origin" => ENV.fetch("WEB_ORIGINS", "http://localhost:5173").split(",").first }
+
+    expect(response).to have_http_status(:ok)
+    expect(alpha_source.reload.name).to eq("modified legitimately")
+  end
+
+  it "never subjects header-authenticated (mobile) requests to the Origin check (regression)" do
+    patch "/api/v1/sources/#{alpha_source.id}",
+          params: { source: { name: "modified via mobile" } },
+          headers: auth_headers
+
+    expect(response).to have_http_status(:ok)
+    expect(alpha_source.reload.name).to eq("modified via mobile")
   end
 
   it "rejects API requests over the configured body limit" do

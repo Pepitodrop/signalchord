@@ -8,6 +8,14 @@ class Membership < ApplicationRecord
 
   scope :enabled, -> { where(disabled_at: nil) }
 
+  def self.scopes_for(role)
+    case role
+    when "owner", "admin" then ["*"]
+    when "analyst", "reviewer" then %w[api:read api:write]
+    else ["api:read"]
+    end
+  end
+
   def disabled?
     disabled_at.present?
   end

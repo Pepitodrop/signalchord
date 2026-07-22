@@ -3,92 +3,24 @@ import {createRoot} from "react-dom/client";
 import cytoscape from "cytoscape";
 import {
   AlertRecord,
+  MeResponse,
   PolicyRecord,
-  SessionResponse,
   SignalChordClient,
   SourceRecord,
   WatchlistRecord,
 } from "@signalchord/api-client";
 import {VelatoShowcase} from "./VelatoShowcase";
+import {SignupPage} from "./routes/SignupPage";
+import {VerifyEmailPage} from "./routes/VerifyEmailPage";
+import {LoginPage} from "./routes/LoginPage";
+import {OnboardingWorkspacePage} from "./routes/OnboardingWorkspacePage";
+import {OnboardingWatchlistPage} from "./routes/OnboardingWatchlistPage";
+import {stepForMe, type Step} from "./routes/deriveStep";
 import "./styles.css";
 
 type View = "overview" | "entities" | "alerts" | "watchlists" | "sources" | "policies";
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
 const REALTIME_URL = import.meta.env.VITE_REALTIME_URL ?? "http://localhost:8088";
-const SESSION_KEY = "signalchord.session.v1";
-
-function storedSession(): SessionResponse | null {
-  try {
-    return JSON.parse(localStorage.getItem(SESSION_KEY) ?? "null") as SessionResponse | null;
-  } catch {
-    return null;
-  }
-}
-
-function Login({onSession}: {onSession: (value: SessionResponse) => void}) {
-  const client = useMemo(() => new SignalChordClient(API_URL), []);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [organization, setOrganization] = useState("");
-  const [error, setError] = useState("");
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setError("");
-    try {
-      const session = await client.createSession(email, password, organization);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      onSession(session);
-    } catch {
-      setError("Sign-in failed. Verify that the Rails control plane is running.");
-    }
-  };
-
-  return (
-    <main className="login">
-      <form className="card loginCard" onSubmit={submit}>
-        <span className="logo">SC</span>
-        <p className="eyebrow">SignalChord v1.0</p>
-        <h1>Connected news intelligence.</h1>
-        <p className="muted">Evidence-first monitoring for analysts.</p>
-        <label>
-          Email
-          <input
-            value={email}
-            onChange={event => setEmail(event.target.value)}
-            type="email"
-            autoComplete="username"
-            placeholder="analyst@signalchord.local"
-            required
-          />
-        </label>
-        <label>
-          Password
-          <input
-            value={password}
-            onChange={event => setPassword(event.target.value)}
-            type="password"
-            autoComplete="current-password"
-            placeholder="Local development password"
-            required
-          />
-        </label>
-        <label>
-          Organization
-          <input
-            value={organization}
-            onChange={event => setOrganization(event.target.value)}
-            autoComplete="organization"
-            placeholder="demo"
-            required
-          />
-        </label>
-        {error && <p className="error">{error}</p>}
-        <button className="primary">Sign in</button>
-      </form>
-    </main>
-  );
-}
 
 function useAlerts(client: SignalChordClient, token: string) {
   const [alerts, setAlerts] = useState<AlertRecord[]>([]);
@@ -437,27 +369,28 @@ function Policies({client}: {client: SignalChordClient}) {
   );
 }
 
-function App() {
-  const [session, setSession] = useState<SessionResponse | null>(storedSession);
+function App({client, me, onLogout}: {client: SignalChordClient; me: MeResponse; onLogout: () => void}) {
   const [view, setView] = useState<View>("overview");
-  const client = useMemo(() => new SignalChordClient(API_URL, session?.access_token), [session]);
-  const {alerts, live, reload} = useAlerts(client, session?.access_token ?? "");
+  // The realtime-gateway SSE connection authenticates via a bearer header,
+  // which the web app can no longer supply now that the session lives in an
+  // httpOnly cookie (that's the point — it's not JS-readable). Passing no
+  // token here degrades gracefully to "Offline" (useAlerts already catches
+  // the failed connection) rather than reconnecting live; extending
+  // realtime-gateway itself to accept the session cookie is out of scope for
+  // this change (a separate Go service) and tracked in TODOS.md.
+  const {alerts, live, reload} = useAlerts(client, "");
   const [sources, setSources] = useState<SourceRecord[]>([]);
   const [watchlists, setWatchlists] = useState<WatchlistRecord[]>([]);
 
   useEffect(() => {
-    if (session) {
-      void Promise.all([client.sources(), client.watchlists()]).then(([sourceRecords, watchlistRecords]) => {
-        setSources(sourceRecords);
-        setWatchlists(watchlistRecords);
-      });
-    }
-  }, [client, session]);
+    void Promise.all([client.sources(), client.watchlists()]).then(([sourceRecords, watchlistRecords]) => {
+      setSources(sourceRecords);
+      setWatchlists(watchlistRecords);
+    });
+  }, [client]);
 
-  if (!session) return <Login onSession={setSession}/>;
   const logout = () => {
-    localStorage.removeItem(SESSION_KEY);
-    setSession(null);
+    void client.webLogout().finally(onLogout);
   };
   const items: Array<[View, string]> = [
     ["overview", "Overview"],
@@ -478,8 +411,8 @@ function App() {
           ))}
         </nav>
         <footer>
-          <small>{session.organization.name}</small>
-          <b>{session.user.display_name ?? session.user.email}</b>
+          <small>{me.organization.name}</small>
+          <b>{me.user.display_name ?? me.user.email}</b>
           <button onClick={logout}>Sign out</button>
         </footer>
       </aside>
@@ -491,17 +424,81 @@ function App() {
           </div>
           <span className={`live ${live ? "on" : "off"}`}>{live ? "Live" : "Offline"}</span>
         </header>
-        {view === "overview" && <Overview alerts={alerts} sources={sources} watchlists={watchlists}/>} 
-        {view === "entities" && <Entities client={client}/>} 
-        {view === "alerts" && <Alerts client={client} alerts={alerts} reload={reload}/>} 
-        {view === "watchlists" && <Watchlists client={client}/>} 
-        {view === "sources" && <Sources client={client}/>} 
-        {view === "policies" && <Policies client={client}/>} 
+        {view === "overview" && <Overview alerts={alerts} sources={sources} watchlists={watchlists}/>}
+        {view === "entities" && <Entities client={client}/>}
+        {view === "alerts" && <Alerts client={client} alerts={alerts} reload={reload}/>}
+        {view === "watchlists" && <Watchlists client={client}/>}
+        {view === "sources" && <Sources client={client}/>}
+        {view === "policies" && <Policies client={client}/>}
       </main>
     </div>
   );
 }
 
+// The one place the web app decides what to show once past /signup and
+// /verify-email: not-logged-in -> login form; logged in with a workspace
+// but no watchlist yet -> the onboarding watchlist step; otherwise the
+// existing dashboard. No router library (D3c) — the step lives in local
+// React state, not the URL, since none of these transitions need a
+// bookmarkable link (the only one that does, email verification, is its
+// own top-level route below).
+function ProtectedRoute() {
+  const client = useMemo(() => new SignalChordClient(API_URL), []);
+  const [step, setStep] = useState<Step>({kind: "loading"});
+
+  const refresh = useCallback(async () => {
+    try {
+      setStep(stepForMe(await client.me()));
+    } catch {
+      setStep({kind: "login"});
+    }
+  }, [client]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  switch (step.kind) {
+    case "loading":
+      return <main className="login"><p className="muted">Loading…</p></main>;
+    case "login":
+      return (
+        <LoginPage
+          client={client}
+          onWorkspaceRequired={(email, password) => setStep({kind: "workspace", email, password})}
+          onAuthenticated={() => void refresh()}
+        />
+      );
+    case "workspace":
+      return (
+        <OnboardingWorkspacePage
+          client={client}
+          email={step.email}
+          password={step.password}
+          onCreated={() => void refresh()}
+          onBackToLogin={() => setStep({kind: "login"})}
+        />
+      );
+    case "watchlist":
+      return <OnboardingWatchlistPage client={client} onCreated={() => void refresh()}/>;
+    case "dashboard":
+      return <App client={client} me={step.me} onLogout={() => setStep({kind: "login"})}/>;
+  }
+}
+
+function Root() {
+  // The only hard requirement for a real URL is the emailed verification
+  // link; everything else stays inside ProtectedRoute's own state machine.
+  switch (window.location.pathname) {
+    case "/signup":
+      return <SignupPage/>;
+    case "/verify-email":
+      return <VerifyEmailPage/>;
+    default:
+      return <ProtectedRoute/>;
+  }
+}
+
 createRoot(document.getElementById("root")!).render(
-  <React.StrictMode><App/></React.StrictMode>,
+  <React.StrictMode><Root/></React.StrictMode>,
 );

@@ -24,6 +24,16 @@ export interface GraphResponse { nodes: GraphNode[]; relationships: GraphRelatio
 export interface TimelineItem { related: Record<string, unknown>; relationship_type: string; relationship: Record<string, unknown>; observed_at?: string; }
 export interface NotificationEndpointRecord { id: string; platform: string; enabled: boolean; last_seen_at?: string; created_at: string; }
 
+export type OnboardingState = "verification_required" | "workspace_required" | "first_watchlist_required" | "complete";
+export interface MeResponse {
+  user: {id: string; email: string; display_name?: string};
+  organization: {id: string; name: string; slug: string};
+  role: string | null;
+  onboarding_state: OnboardingState;
+}
+export interface WebSessionResponse { status: "authenticated" | "workspace_required"; role?: string; }
+export interface OrganizationCreatedResponse { id: string; name: string; slug: string; role: string; }
+
 export class SignalChordApiError extends Error {
   constructor(public status: number, public payload: unknown) {
     super(`SignalChord API request failed with ${status}`);
@@ -36,6 +46,35 @@ export class SignalChordClient {
   async createSession(email: string, password: string, organizationSlug: string): Promise<SessionResponse> {
     return this.request<SessionResponse>("/api/v1/auth/session", {method: "POST", body: JSON.stringify({email, password, organization_slug: organizationSlug})}, false);
   }
+  // Closed-beta onboarding — cookie-based web session, distinct from the
+  // bearer-token createSession() above (which mobile keeps using unchanged).
+  signup(email: string, password: string, betaAccessCode: string, displayName?: string) {
+    return this.request<{email: string; message: string}>(
+      "/api/v1/signup",
+      {method: "POST", body: JSON.stringify({email, password, beta_access_code: betaAccessCode, display_name: displayName})},
+      false,
+    );
+  }
+  verifyEmail(token: string) {
+    return this.request<{email: string; message: string}>("/api/v1/email_verifications", {method: "POST", body: JSON.stringify({token})}, false);
+  }
+  resendVerification(email: string) {
+    return this.request<{message: string}>("/api/v1/email_verifications/resend", {method: "POST", body: JSON.stringify({email})}, false);
+  }
+  webLogin(email: string, password: string) {
+    return this.request<WebSessionResponse>("/api/v1/auth/web_session", {method: "POST", body: JSON.stringify({email, password})}, false);
+  }
+  webLogout() {
+    return this.request<null>("/api/v1/auth/web_session", {method: "DELETE"}, false);
+  }
+  createOrganization(email: string, password: string, name: string) {
+    return this.request<OrganizationCreatedResponse>(
+      "/api/v1/organizations",
+      {method: "POST", body: JSON.stringify({email, password, name})},
+      false,
+    );
+  }
+  me() { return this.request<MeResponse>("/api/v1/me"); }
   organizations() { return this.request<Array<{id: string; name: string; slug: string}>>("/api/v1/organizations"); }
   sources() { return this.request<SourceRecord[]>("/api/v1/sources"); }
   createSource(source: Partial<SourceRecord>) { return this.request<SourceRecord>("/api/v1/sources", {method: "POST", body: JSON.stringify({source})}); }
@@ -63,7 +102,10 @@ export class SignalChordClient {
     headers.set("Accept", "application/json");
     if (init.body) headers.set("Content-Type", "application/json");
     if (authenticated && this.token) headers.set("Authorization", `Bearer ${this.token}`);
-    const response = await fetch(`${this.baseUrl}${path}`, {...init, headers});
+    // "include" is harmless for mobile/bearer-token requests (no browser
+    // cookie jar involved there) and required for the web app's httpOnly
+    // session cookie to be sent/received cross-port to the API origin.
+    const response = await fetch(`${this.baseUrl}${path}`, {...init, headers, credentials: "include"});
     const text = await response.text();
     const payload = text ? JSON.parse(text) : null;
     if (!response.ok) throw new SignalChordApiError(response.status, payload);

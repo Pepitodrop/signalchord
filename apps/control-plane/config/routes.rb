@@ -16,7 +16,13 @@ Rails.application.routes.draw do
       resources :sessions, only: %i[index destroy]
       post "invitations/accept", to: "invitations#accept"
       get :search, to: "search#show"
-      resources :organizations, only: %i[index show]
+      post "signup", to: "signups#create"
+      post "email_verifications", to: "email_verifications#create"
+      post "email_verifications/resend", to: "email_verifications#resend"
+      post "auth/web_session", to: "web_sessions#create"
+      delete "auth/web_session", to: "web_sessions#destroy"
+      get "me", to: "me#show"
+      resources :organizations, only: %i[index show create]
       resources :memberships, only: %i[index update destroy]
       resources :invitations, only: %i[index create destroy]
       resource :usage_limit, only: %i[show update]

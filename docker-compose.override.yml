@@ -41,12 +41,26 @@ services:
       SIGNALCHORD_VERSION: 1.0.0
       GRAPH_QUERY_URL: http://graph-query:8090
       VELATO_ENGINE_URL: http://velato-api:8091
+      # Closed-beta onboarding — production.rb requires SMTP_HOST with no
+      # default, so this must be set or the app fails to boot entirely
+      # (RAILS_ENV is production for this local slice).
+      BETA_ACCESS_CODE: signalchord-local-beta-code
+      EMAIL_VERIFICATION_TOKEN_TTL_HOURS: "24"
+      SESSION_COOKIE_NAME: sc_session
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_STARTTLS: "false"
+      SMTP_OPEN_TIMEOUT: "5"
+      SMTP_READ_TIMEOUT: "5"
+      MAILER_FROM_ADDRESS: beta@signalchord.local
+      PUBLIC_WEB_URL: http://localhost:5173
     command: ["sh", "-lc", "bin/rails db:prepare db:seed && bin/rails server -b 0.0.0.0 -p 3000"]
     ports: ["${CONTROL_PLANE_HOST_PORT:-3000}:3000"]
     depends_on:
       postgres: {condition: service_healthy}
       valkey: {condition: service_healthy}
       kafka: {condition: service_healthy}
+      mailpit: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:3000/healthz >/dev/null"]
       interval: 10s
