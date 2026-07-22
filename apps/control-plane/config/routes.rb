@@ -21,6 +21,7 @@ Rails.application.routes.draw do
       post "email_verifications/resend", to: "email_verifications#resend"
       post "auth/web_session", to: "web_sessions#create"
       delete "auth/web_session", to: "web_sessions#destroy"
+      get "me", to: "me#show"
       resources :organizations, only: %i[index show create]
       resources :memberships, only: %i[index update destroy]
       resources :invitations, only: %i[index create destroy]
