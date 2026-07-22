@@ -19,6 +19,48 @@ RSpec.describe AlertEmailNotificationJob, type: :job do
     expect(delivery.status).to eq("delivered")
   end
 
+  it "skips delivery when the member opts out after enqueue" do
+    membership.update!(email_alerts_enabled: false)
+
+    expect {
+      described_class.new.perform(alert.id, membership.id)
+    }.not_to change(ActionMailer::Base.deliveries, :count)
+
+    delivery = AlertEmailDelivery.find_by(alert:, membership:)
+    expect(delivery.status).to eq("skipped")
+    expect(delivery.last_error).to eq("member opted out of alert emails")
+  end
+
+  it "skips delivery when the membership is disabled after enqueue" do
+    membership.update!(disabled_at: Time.current)
+
+    expect {
+      described_class.new.perform(alert.id, membership.id)
+    }.not_to change(ActionMailer::Base.deliveries, :count)
+
+    delivery = AlertEmailDelivery.find_by(alert:, membership:)
+    expect(delivery.status).to eq("skipped")
+    expect(delivery.last_error).to eq("membership is disabled")
+  end
+
+  it "skips delivery when the membership belongs to another organization" do
+    other_organization = Organization.create!(name: "Other", slug: "other")
+    other_membership = Membership.create!(
+      organization: other_organization,
+      user:,
+      role: "viewer",
+      email_alerts_enabled: true
+    )
+
+    expect {
+      described_class.new.perform(alert.id, other_membership.id)
+    }.not_to change(ActionMailer::Base.deliveries, :count)
+
+    delivery = AlertEmailDelivery.find_by(alert:, membership: other_membership)
+    expect(delivery.status).to eq("skipped")
+    expect(delivery.last_error).to eq("membership belongs to a different organization")
+  end
+
   it "marks the delivery failed and re-raises when the mailer raises" do
     allow(AlertMailer).to receive(:alert_notification).and_raise(Net::OpenTimeout, "smtp timed out")
 
@@ -34,6 +76,20 @@ RSpec.describe AlertEmailNotificationJob, type: :job do
 
   it "does not resend when the delivery is already delivered (redelivery-safe)" do
     AlertEmailDelivery.create!(organization:, alert:, membership:, status: "delivered")
+
+    expect {
+      described_class.new.perform(alert.id, membership.id)
+    }.not_to change(ActionMailer::Base.deliveries, :count)
+  end
+
+  it "does not reconsider a terminal skipped delivery on redelivery" do
+    AlertEmailDelivery.create!(
+      organization:,
+      alert:,
+      membership:,
+      status: "skipped",
+      last_error: "member opted out of alert emails"
+    )
 
     expect {
       described_class.new.perform(alert.id, membership.id)
