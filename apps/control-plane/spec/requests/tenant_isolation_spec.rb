@@ -166,6 +166,64 @@ RSpec.describe "tenant isolation", type: :request do
     expect(response.headers["Permissions-Policy"]).to include("camera=()")
   end
 
+  it "does not authenticate into its former organization once a membership is disabled" do
+    alpha_membership.update!(disabled_at: Time.current)
+
+    get "/api/v1/sources", headers: auth_headers
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it "isolates tenants identically whether authenticated via header or cookie" do
+    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+
+    get "/api/v1/sources"
+    ids = JSON.parse(response.body).map { |source| source.fetch("id") }
+    expect(ids).to include(alpha_source.id)
+    expect(ids).not_to include(beta_source.id)
+
+    get "/api/v1/watchlists/#{beta_watchlist.id}"
+    expect(response).to have_http_status(:not_found)
+  end
+
+  it "rejects a cookie-authenticated mutating request from a mismatched Origin (CSRF)" do
+    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+
+    patch "/api/v1/sources/#{alpha_source.id}",
+          params: { source: { name: "modified via csrf" } },
+          headers: { "Origin" => "https://attacker.example" }
+
+    expect(response).to have_http_status(:forbidden)
+    expect(alpha_source.reload.name).to eq("Alpha feed")
+  end
+
+  it "rejects a cookie-authenticated mutating request with no Origin header at all (fail closed)" do
+    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+
+    patch "/api/v1/sources/#{alpha_source.id}", params: { source: { name: "modified via csrf" } }
+
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it "allows a cookie-authenticated mutating request from a matching Origin" do
+    cookies.encrypted[CookieSession::SESSION_COOKIE_NAME] = token
+
+    patch "/api/v1/sources/#{alpha_source.id}",
+          params: { source: { name: "modified legitimately" } },
+          headers: { "Origin" => ENV.fetch("WEB_ORIGINS", "http://localhost:5173").split(",").first }
+
+    expect(response).to have_http_status(:ok)
+    expect(alpha_source.reload.name).to eq("modified legitimately")
+  end
+
+  it "never subjects header-authenticated (mobile) requests to the Origin check (regression)" do
+    patch "/api/v1/sources/#{alpha_source.id}",
+          params: { source: { name: "modified via mobile" } },
+          headers: auth_headers
+
+    expect(response).to have_http_status(:ok)
+    expect(alpha_source.reload.name).to eq("modified via mobile")
+  end
+
   it "rejects API requests over the configured body limit" do
     previous = ENV["API_MAX_BODY_BYTES"]
     ENV["API_MAX_BODY_BYTES"] = "10"

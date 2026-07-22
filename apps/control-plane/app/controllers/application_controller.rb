@@ -1,7 +1,10 @@
 class ApplicationController < ActionController::API
+  include CookieSession
+
   class Forbidden < StandardError; end
 
   before_action :authenticate_api_token!
+  before_action :verify_same_origin!
 
   rescue_from ActiveRecord::RecordNotFound, with: -> { render_error("not_found", :not_found) }
   rescue_from ActiveRecord::RecordInvalid, with: ->(error) {
@@ -17,12 +20,38 @@ class ApplicationController < ActionController::API
   attr_reader :current_api_token
 
   def authenticate_api_token!
-    plaintext = request.authorization.to_s.delete_prefix("Bearer ").presence
-    @current_api_token = ApiToken.authenticate(plaintext)
+    header_token = request.authorization.to_s.delete_prefix("Bearer ").presence
+    if header_token
+      @current_auth_source = :header
+      @current_api_token = ApiToken.authenticate(header_token)
+    else
+      @current_auth_source = :cookie
+      @current_api_token = ApiToken.authenticate(bearer_token_from_cookie)
+    end
     return render_error("unauthorized", :unauthorized) unless @current_api_token
     return render_error("forbidden", :forbidden) if current_user_disabled_or_suspended?
 
     @current_api_token.touch(:last_used_at)
+  end
+
+  # CSRF: a header-based bearer token (mobile, scripts) is never automatically
+  # attached by a browser, so it carries no CSRF risk and is skipped here.
+  # A cookie IS automatically attached by the browser on every request to this
+  # origin, so any mutating request that authenticated via cookie must also
+  # prove it actually came from our own frontend. Requests that skip
+  # authenticate_api_token! entirely (signup, organization creation, invitation
+  # acceptance) never set @current_auth_source, so this is a no-op for them —
+  # they take fresh credentials in the body, not an ambient cookie, so there is
+  # nothing here for CSRF to exploit.
+  def verify_same_origin!
+    return unless @current_auth_source == :cookie
+    return if request.get? || request.head?
+
+    allowed_origins = ENV.fetch("WEB_ORIGINS", "http://localhost:5173").split(",").map(&:strip)
+    origin = request.headers["Origin"]
+    return if origin.present? && allowed_origins.include?(origin)
+
+    render_error("forbidden", :forbidden)
   end
 
   def current_organization
