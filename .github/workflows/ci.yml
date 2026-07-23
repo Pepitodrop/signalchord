@@ -106,12 +106,23 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U signalchord -d signalchord_control_plane_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
+      # Rack::Attack is Redis-backed (tenant-security-hardening, Blocker #4) so
+      # throttle counters are shared across replicas in real deployments —
+      # tested against a real Redis here rather than the in-process fallback,
+      # to keep test env behavior identical to production for this middleware.
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
     defaults:
       run:
         working-directory: apps/control-plane
     env:
       RAILS_ENV: test
       DATABASE_URL: postgresql://signalchord:signalchord@localhost:5432/signalchord_control_plane_test
+      REDIS_URL: redis://localhost:6379/0
       SECRET_KEY_BASE: ci-secret-key-base
       NOTIFICATION_TOKEN_ENCRYPTION_KEY: ci-notification-encryption-key
       DISABLE_BOOTSNAP: 'true'

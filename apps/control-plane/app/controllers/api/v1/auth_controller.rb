@@ -1,6 +1,8 @@
 module Api
   module V1
     class AuthController < ActionController::API
+      include DummyTimingAuthentication
+
       rescue_from ActionController::ParameterMissing, with: ->(error) {
         render json: { error: "invalid_request", detail: error.message }, status: :bad_request
       }
@@ -13,7 +15,7 @@ module Api
         user = User.find_by(email:)
         organization = Organization.find_by(slug: organization_slug)
         membership = Membership.find_by(user:, organization:) if user && organization
-        unless user&.authenticate(password) && membership && user.disabled_at.nil? && membership.disabled_at.nil?
+        unless authenticate_with_dummy_timing(user, password) && membership && user.disabled_at.nil? && membership.disabled_at.nil?
           return render json: { error: "invalid_credentials" }, status: :unauthorized
         end
 

@@ -2,6 +2,7 @@ module Api
   module V1
     class WebSessionsController < ActionController::API
       include CookieSession
+      include DummyTimingAuthentication
 
       rescue_from ActionController::ParameterMissing, with: ->(error) {
         render json: { error: "invalid_request", detail: error.message }, status: :bad_request
@@ -17,7 +18,7 @@ module Api
         password = params.require(:password).to_s
 
         user = User.find_by(email:)
-        unless user&.authenticate(password) && !user.disabled?
+        unless authenticate_with_dummy_timing(user, password) && !user&.disabled?
           return render json: { error: "invalid_credentials" }, status: :unauthorized
         end
         return render json: { error: "verification_required" }, status: :forbidden unless user.email_verified?

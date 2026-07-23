@@ -19,6 +19,22 @@ RSpec.describe "web session (cookie auth)", type: :request do
       expect(JSON.parse(response.body)["error"]).to eq("invalid_credentials")
     end
 
+    it "runs a real bcrypt comparison even when the email doesn't exist, so timing can't reveal account existence (Blocker #8 regression)" do
+      expect(BCrypt::Password).to receive(:create).with("whatever-password").and_call_original
+
+      post "/api/v1/auth/web_session", params: { email: "nobody@example.com", password: "whatever-password" }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
+    it "does not run the dummy bcrypt path for a real account with the wrong password" do
+      expect(BCrypt::Password).not_to receive(:create)
+
+      post "/api/v1/auth/web_session", params: { email: verified_user.email, password: "wrong-password" }
+
+      expect(response).to have_http_status(:unauthorized)
+    end
+
     it "rejects an unverified user even with the correct password" do
       post "/api/v1/auth/web_session", params: { email: unverified_user.email, password: "correct-horse-battery-staple" }
       expect(response).to have_http_status(:forbidden)
@@ -62,6 +78,26 @@ RSpec.describe "web session (cookie auth)", type: :request do
       post "/api/v1/auth/web_session", params: { email: verified_user.email, password: "correct-horse-battery-staple" }
 
       expect(JSON.parse(response.body)["role"]).to eq("owner")
+    end
+
+    it "sets the Secure cookie flag based on SIGNALCHORD_ENV, not Rails.env (drift fix)" do
+      Membership.create!(organization:, user: verified_user, role: "admin")
+
+      with_env("SIGNALCHORD_ENV" => "production") do
+        post "/api/v1/auth/web_session", params: { email: verified_user.email, password: "correct-horse-battery-staple" }
+      end
+
+      expect(response.headers["Set-Cookie"]).to match(/secure/i)
+    end
+
+    it "does not set the Secure flag when SIGNALCHORD_ENV isn't production, even though this request is over plain http" do
+      Membership.create!(organization:, user: verified_user, role: "admin")
+
+      with_env("SIGNALCHORD_ENV" => "development") do
+        post "/api/v1/auth/web_session", params: { email: verified_user.email, password: "correct-horse-battery-staple" }
+      end
+
+      expect(response.headers["Set-Cookie"]).not_to match(/secure/i)
     end
 
     it "authenticates the resulting cookie against a real tenant-scoped endpoint" do

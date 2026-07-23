@@ -27,6 +27,22 @@ RSpec.describe "POST /api/v1/organizations", type: :request do
     expect(Organization.exists?(slug: "acme-research")).to eq(false)
   end
 
+  it "runs a real bcrypt comparison even when the email doesn't exist, so timing can't reveal account existence (Blocker #8 regression)" do
+    expect(BCrypt::Password).to receive(:create).with("correct-horse-battery-staple").and_call_original
+
+    post "/api/v1/organizations", params: valid_params.merge(email: "nobody@example.com")
+
+    expect(response).to have_http_status(:unauthorized)
+  end
+
+  it "does not run the dummy bcrypt path for a real account with the wrong password" do
+    expect(BCrypt::Password).not_to receive(:create)
+
+    post "/api/v1/organizations", params: valid_params.merge(password: "wrong-password")
+
+    expect(response).to have_http_status(:unauthorized)
+  end
+
   it "rejects an unverified user" do
     verified_user.update!(email_verified_at: nil)
     post "/api/v1/organizations", params: valid_params
