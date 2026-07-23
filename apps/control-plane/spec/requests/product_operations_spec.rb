@@ -126,6 +126,12 @@ RSpec.describe "product operations readiness", type: :request do
           params: { usage_limit: { billing_state: "past_due", source_limit: 5 } },
           headers: owner_headers
     expect(response).to have_http_status(:ok)
+    # billing_state is no longer client-mass-assignable (Blocker #7) — the
+    # PATCH above only takes effect on source_limit. Confirm that, then set
+    # the writability gate directly at the model layer, the way a real
+    # billing system would.
+    expect(usage_limit.reload.billing_state).to eq("active")
+    usage_limit.update!(billing_state: "past_due")
 
     post "/api/v1/watchlists",
          params: { watchlist: { name: "Blocked watchlist" } },

@@ -89,7 +89,7 @@ RSpec.describe "governance requests", type: :request do
     _record, analyst_token = ApiToken.issue!(organization:, user: analyst, name: "test", scopes: Membership.scopes_for("analyst"))
 
     post "/api/v1/governance_requests",
-         params: { governance_request: { request_type: "tenant_export", parameters: {} } },
+         params: { governance_request: { request_type: "tenant_export" } },
          headers: { "Authorization" => "Bearer #{analyst_token}" }.merge("Idempotency-Key" => "analyst-attempt")
 
     expect(response).to have_http_status(:forbidden)
@@ -102,7 +102,7 @@ RSpec.describe "governance requests", type: :request do
     _record, reviewer_token = ApiToken.issue!(organization:, user: reviewer, name: "test", scopes: Membership.scopes_for("reviewer"))
 
     post "/api/v1/governance_requests",
-         params: { governance_request: { request_type: "tenant_export", parameters: {} } },
+         params: { governance_request: { request_type: "tenant_export" } },
          headers: { "Authorization" => "Bearer #{reviewer_token}" }.merge("Idempotency-Key" => "reviewer-attempt")
 
     expect(response).to have_http_status(:forbidden)
@@ -119,7 +119,7 @@ RSpec.describe "governance requests", type: :request do
     )
 
     post "/api/v1/governance_requests",
-         params: { governance_request: { request_type: "tenant_export", parameters: {} } },
+         params: { governance_request: { request_type: "tenant_export" } },
          headers: auth_headers.merge("Idempotency-Key" => "race-key")
 
     expect(response).to have_http_status(:conflict)
@@ -131,7 +131,7 @@ RSpec.describe "governance requests", type: :request do
     delivery = AlertEmailDelivery.create!(organization:, alert:, membership:, status: "delivered")
 
     post "/api/v1/governance_requests",
-         params: { governance_request: { request_type: "tenant_export", parameters: {} } },
+         params: { governance_request: { request_type: "tenant_export" } },
          headers: auth_headers.merge("Idempotency-Key" => "export-with-deliveries")
 
     expect(response).to have_http_status(:created)

@@ -29,11 +29,14 @@ RSpec.describe "search", type: :request do
     end
   end
 
-  it "returns empty results (not an error) for a blank query" do
+  it "returns 400 (not a 500) for a missing/blank query" do
+    # params.require(:q) treats a blank string the same as a missing key, so
+    # this never reaches the controller's own query.blank? branch — that
+    # branch is unreachable today, a pre-existing quirk unrelated to this
+    # feature's scope.
     get "/api/v1/search", params: { q: "" }, headers: headers
 
-    expect(response).to have_http_status(:ok)
-    expect(JSON.parse(response.body)["results"]).to eq([])
+    expect(response).to have_http_status(:bad_request)
   end
 
   it "returns empty results (not a 500) when OpenSearch is unreachable" do

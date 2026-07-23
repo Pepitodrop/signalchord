@@ -82,6 +82,11 @@ RSpec.describe "web session (cookie auth)", type: :request do
 
     it "sets the Secure cookie flag based on SIGNALCHORD_ENV, not Rails.env (drift fix)" do
       Membership.create!(organization:, user: verified_user, role: "admin")
+      # Rails' ActionDispatch::Cookies silently drops a `secure: true` cookie
+      # over a plain-http request (outside of Rails.env.development?) — https!
+      # simulates the request arriving over TLS so the cookie actually gets
+      # written and the Secure flag is observable here.
+      https!
 
       with_env("SIGNALCHORD_ENV" => "production") do
         post "/api/v1/auth/web_session", params: { email: verified_user.email, password: "correct-horse-battery-staple" }

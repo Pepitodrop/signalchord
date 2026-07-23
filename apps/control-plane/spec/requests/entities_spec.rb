@@ -39,15 +39,21 @@ RSpec.describe "entities", type: :request do
     end
   end
 
-  it "forces tenant_id on the timeline and graph endpoints too" do
+  it "forces tenant_id on the timeline endpoint too" do
     stub_graph_query(body: '{"items":[]}')
+
     get "/api/v1/entities/company:acme/timeline", headers: headers
+
     expect(Net::HTTP).to have_received(:get_response) do |uri|
       expect(URI.decode_www_form(uri.query).to_h["tenant_id"]).to eq(organization.id)
     end
+  end
 
+  it "forces tenant_id on the graph endpoint too" do
     stub_graph_query(body: '{"nodes":[],"relationships":[]}')
+
     get "/api/v1/entities/company:acme/graph", headers: headers
+
     expect(Net::HTTP).to have_received(:get_response) do |uri|
       expect(URI.decode_www_form(uri.query).to_h["tenant_id"]).to eq(organization.id)
     end

@@ -7,7 +7,11 @@ RSpec.describe "Rack::Attack", type: :request do
   after { Rack::Attack.cache.store.clear }
 
   it "is configured with a Redis-backed cache store (Blocker #4)" do
-    expect(Rack::Attack.cache.store).to be_a(ActiveSupport::Cache::RedisCacheStore)
+    # Rack::Attack wraps an assigned ActiveSupport::Cache::RedisCacheStore in
+    # its own StoreProxy adapter, so the class itself isn't a
+    # RedisCacheStore — confirm it's the Redis-backed proxy, not the
+    # in-process default (Rack::Attack::StoreProxy::MemoryStoreProxy).
+    expect(Rack::Attack.cache.store.class.name).to include("Redis")
   end
 
   it "omits RateLimit-Limit/RateLimit-Reset headers on a throttled response (no calibration leak)" do
@@ -44,8 +48,11 @@ RSpec.describe "Rack::Attack", type: :request do
     store_a.increment(key, 1, expires_in: 60)
     store_b.increment(key, 1, expires_in: 60)
 
-    expect(store_a.read(key)).to eq(2)
-    expect(store_b.read(key)).to eq(2)
+    # RedisCacheStore#increment writes via Redis's native INCR (a raw
+    # integer), which #read can't reliably deserialize back — peek the
+    # current value the same way increment itself does, by incrementing by 0.
+    expect(store_a.increment(key, 0)).to eq(2)
+    expect(store_b.increment(key, 0)).to eq(2)
   ensure
     store_a&.delete(key)
   end
