@@ -238,3 +238,31 @@ New structured security-denial log line (see §10's `application_controller.rb` 
 ## 17. Recommended next gstack command
 
 `/plan-eng-review` — this spec changes a foundational, app-wide authorization primitive (`require_scope!`'s live-role derivation touches nearly every write endpoint), closes a genuine tenant-destructive-action authorization gap, and introduces a new cross-cutting logging concern — exactly the kind of architecture-level change that benefits from a dedicated engineering review pass (including an outside-voice second opinion) before implementation starts, matching the pattern used for both prior features.
+
+## 18. Eng review decisions (locks §10/§15, read alongside them)
+
+The following decisions were made during `/plan-eng-review` (2026-07-23) and take precedence over the corresponding §10 prose where they add specificity:
+
+- **Internal::V1::TokensController disabled-state fix (Blocker #3, continued):** ships as a **non-2xx status** (e.g. 403), not a `disabled: true` flag on a 200. Verified against the actual Go consumer (`services/realtime-gateway/main.go:206-220`): it already treats any non-200 as a hard failure and its `tokenIntrospection` struct silently drops unknown JSON fields, so a flag-on-200 shape would ship a fix that doesn't fix anything. Zero changes to `main.go` required.
+- **Dummy-timing helper (Blocker #8):** new `app/controllers/concerns/dummy_timing_authentication.rb` (`ActiveSupport::Concern`), mirroring the existing `CookieSession` pattern, included by all 3 login controllers. Not a duplicated private method — `WebSessionsController` and `AuthController` don't inherit `ApplicationController`, so a shared method can't live there.
+- **Token-revocation DRY (Blocker #3):** extract a private `revoke_active_tokens!` in `memberships_controller.rb`, called from both `#update` and `#destroy`, instead of pasting the same `.active.update_all(revoked_at: ...)` line into `#update` as originally drafted.
+- **Disabled-check DRY (new, surfaced by review):** the "is this token's user/membership disabled" check gets extracted onto the model as `ApiToken#user_or_membership_disabled?`. `ApplicationController#current_user_disabled_or_suspended?` delegates to it; `Internal::V1::TokensController` calls the same method for its Blocker #3 fix, instead of reimplementing the same 3-line check a second time.
+- **Quick-hardening-bundle tests (§7/§10):** all 3 (`config.hosts`, cookie Secure-flag env-check, `midi_base64` filter fix) get a regression test each — the original draft shipped these untested.
+- **Rack::Attack Redis fail-open (Blocker #4):** explicitly confirmed and tested (not left as an undocumented library default) — a Redis connection error must not 503 the whole API, since the `api/ip` catch-all throttle fires on every request under `/api/*`.
+
+6 new TODOS.md entries added (see `## Tenant Security Hardening` section): email-verification-resend timing side-channel, SSE mid-stream re-auth, remaining 4 unrescued `RecordNotUnique` sites, full 20-model governance export/deletion coverage, broader rate-limit coverage, and a typed disabled-signal follow-up for `realtime-gateway`.
+
+## GSTACK REVIEW REPORT
+
+| Review | Trigger | Why | Runs | Status | Findings |
+|--------|---------|-----|------|--------|----------|
+| CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run |
+| Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 6 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run (backend-only feature) |
+| DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | not run |
+
+**CROSS-MODEL:** Outside voice unavailable this run — Codex CLI auth failed (401, consistent all session), and the Claude-subagent fallback hit an account spend-limit error (non-retryable, non-transient). Findings above are single-model (Claude), verified directly against source (application code + the Go consumer), not inferred.
+**VERDICT:** ENG CLEARED — ready to implement. Outside-voice cross-check did not run; re-running it before merge is optional, not required, given every finding here was independently verified against real code rather than pattern-matched.
+
+NO UNRESOLVED DECISIONS
