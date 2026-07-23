@@ -7,6 +7,11 @@ module Internal
         plaintext = request.authorization.to_s.delete_prefix("Bearer ").presence
         token = ApiToken.authenticate(plaintext)
         return render json: { error: "unauthorized" }, status: :unauthorized unless token
+        # Defense-in-depth for services/realtime-gateway's SSE auth: a
+        # disabled user/membership must get a non-2xx here, since the Go
+        # consumer already treats any non-200 as a hard failure and denies
+        # the connection — no Go-side changes needed for this to take effect.
+        return render json: { error: "forbidden" }, status: :forbidden if token.user_or_membership_disabled?
 
         render json: {
           organization_id: token.organization_id,

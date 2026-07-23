@@ -19,7 +19,6 @@ module Api
 
       def limit_params
         params.require(:usage_limit).permit(
-          :billing_state,
           :source_limit,
           :watchlist_limit,
           :notification_endpoint_limit,
