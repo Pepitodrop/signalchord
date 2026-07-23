@@ -53,7 +53,12 @@ module Api
         {
           request_type: payload.require(:request_type),
           source_id: payload[:source_id],
-          parameters: payload.permit(parameters: {}).fetch(:parameters, {}).to_h
+          # `.fetch(:parameters, {})` (the prior form) wraps its OWN default
+          # value through Parameters#convert_value_to_parameters, producing
+          # an unpermitted Parameters object whenever `parameters` is absent
+          # from the request — raising UnfilteredParameters on #to_h. `[]`
+          # doesn't have that wrapping behavior for a missing key (just nil).
+          parameters: payload.permit(parameters: {})[:parameters]&.to_h || {}
         }
       end
 
