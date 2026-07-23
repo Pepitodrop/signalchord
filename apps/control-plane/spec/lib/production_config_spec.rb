@@ -116,4 +116,20 @@ RSpec.describe ProductionConfig do
       expect { described_class.validate!(base_env) }.not_to raise_error
     end
   end
+
+  describe ".allowed_hosts" do
+    it "returns an empty array (no restriction) when RAILS_ALLOWED_HOSTS is unset" do
+      expect(described_class.allowed_hosts({})).to eq([])
+    end
+
+    it "splits a comma-separated RAILS_ALLOWED_HOSTS into a trimmed array" do
+      env = { "RAILS_ALLOWED_HOSTS" => "app.signalchord.example, api.signalchord.example" }
+      expect(described_class.allowed_hosts(env)).to eq(%w[app.signalchord.example api.signalchord.example])
+    end
+
+    it "drops empty entries from stray commas" do
+      env = { "RAILS_ALLOWED_HOSTS" => "app.signalchord.example,,api.signalchord.example," }
+      expect(described_class.allowed_hosts(env)).to eq(%w[app.signalchord.example api.signalchord.example])
+    end
+  end
 end

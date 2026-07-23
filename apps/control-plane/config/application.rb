@@ -11,7 +11,10 @@ module SignalChordControlPlane
     config.active_record.default_timezone = :utc
     config.active_job.queue_adapter = :sidekiq
     config.generators.system_tests = nil
-    config.filter_parameters += %i[password token authorization midi_data beta_access_code]
+    # midi_base64 is the actual wire param key (see PoliciesController#upload_velato) —
+    # up to 128KB of MIDI binary that would otherwise never be filtered from
+    # Rails' parameter logs in production.
+    config.filter_parameters += %i[password token authorization midi_base64 beta_access_code]
 
     # config.api_only strips ActionDispatch::Cookies from the default
     # middleware stack (API-only apps normally use bearer tokens, not
