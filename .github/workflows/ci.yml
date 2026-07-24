@@ -175,6 +175,17 @@ jobs:
       - run: python3 scripts/test_validate_capacity.py
       - run: python3 scripts/validate_recovery.py
       - run: python3 scripts/test_validate_recovery.py
+      - name: Fetch migration-safety diff base
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}" || true
+      - name: Validate migration safety
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            python3 scripts/validate_migration_safety.py --base "${{ github.event.pull_request.base.sha }}"
+          else
+            python3 scripts/validate_migration_safety.py
+          fi
+      - run: python3 scripts/test_validate_migration_safety.py
       - run: python3 scripts/validate_governance.py
       - run: python3 scripts/test_validate_governance.py
       - run: python3 scripts/validate_quality.py

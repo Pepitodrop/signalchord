@@ -11,7 +11,8 @@ BACKUP_POSTGRES_ONLY = ROOT / "scripts/single-server/backup-postgres-only.sh"
 RESTORE = ROOT / "scripts/single-server/restore.sh"
 RESTORE_IMPL = ROOT / "scripts/single-server/restore-v1.sh"
 ACCEPTANCE = ROOT / "scripts/single-server/acceptance.sh"
-SCRIPTS = [BACKUP, BACKUP_POSTGRES_ONLY, RESTORE, RESTORE_IMPL, ACCEPTANCE]
+REPLAY_KAFKA = ROOT / "scripts/single-server/replay-kafka.sh"
+SCRIPTS = [BACKUP, BACKUP_POSTGRES_ONLY, RESTORE, RESTORE_IMPL, ACCEPTANCE, REPLAY_KAFKA]
 
 
 class ReleaseToolingTest(unittest.TestCase):
@@ -91,6 +92,38 @@ class ReleaseToolingTest(unittest.TestCase):
         text = ACCEPTANCE.read_text(encoding="utf-8")
         for marker in ("signalchord-feed-collector", "/api/v1/sources", "/api/v1/watchlists", "/api/v1/alerts"):
             self.assertIn(marker, text)
+
+    def test_replay_kafka_contract(self) -> None:
+        text = REPLAY_KAFKA.read_text(encoding="utf-8")
+        for marker in (
+            "kafka-consumer-groups.sh",
+            "--reset-offsets",
+            "--to-datetime",
+            "--dry-run",
+            "--execute",
+            "--describe",
+            "--namespace",
+            "--group",
+            "--topic",
+            "--force",
+            "--yes",
+            "--evidence-report",
+            "retention window",
+            "signalchord-alert-projector-v1",
+            "signalchord-entity-resolution-v1",
+            "signalchord-nlp-v1",
+            "signalchord-graph-analytics-v1",
+            "signalchord-graph-projector-v1",
+            "signalchord-velato-v1",
+            "signalchord-notification-worker-v1",
+            "signalchord-claim-intelligence-v1",
+            "signalchord-search-projector-v1",
+        ):
+            self.assertIn(marker, text)
+        # No implicit namespace/group default, and no bulk/wildcard reset path.
+        self.assertNotIn("NAMESPACE=signalchord\n", text)
+        for forbidden in ("--all-topics", "--all-groups"):
+            self.assertNotIn(forbidden, text)
 
 
 if __name__ == "__main__":
