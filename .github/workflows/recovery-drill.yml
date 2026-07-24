@@ -1,0 +1,834 @@
+name: Recovery Drill
+
+# Real end-to-end proof of docs/specs/recovery-and-replay-hardening.md's
+# backup/restore/replay/poison-message tooling (PR1-4), against a real kind
+# cluster running the real Helm charts and real (locally built) images --
+# not a dry run. A dedicated workflow (not folded into ci.yml) so standard
+# PR CI isn't slowed by this: path-filtered to the files this feature touches
+# (so this PR's own diff triggers it), plus a manual workflow_dispatch.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/single-server/**"
+      - "scripts/recovery-drill/**"
+      - "scripts/validate_migration_safety.py"
+      - "recovery/**"
+      - "infrastructure/kubernetes/helm/signalchord/**"
+      - "infrastructure/kubernetes/helm/signalchord-community/**"
+      - "infrastructure/docker/**"
+      - "services/python_common/poison_message.py"
+      - "services/internal/kafkautil/**"
+      - "services/realtime-gateway/**"
+      - "services/graph-projector/**"
+      - "services/search-projector/**"
+      - "services/nlp-pipeline/**"
+      - "services/notification-worker/**"
+      - "services/alert-projector/**"
+      - "services/entity-resolution/**"
+      - "services/claim-intelligence/**"
+      - "services/graph-analytics/**"
+      - "services/velato-engine/**"
+      - "apps/control-plane/**"
+      - ".github/workflows/recovery-drill.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: recovery-drill-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  KIND_CLUSTER: signalchord-drill
+
+jobs:
+  recovery-drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # Runs before every other setup step (helm, kind, dependency install)
+      # so $RUNNER_TEMP/sections and steps.ids.outputs.started_at exist even
+      # if one of those later setup steps fails outright -- otherwise the
+      # "Build recovery evidence artifact" step (which reads
+      # steps.ids.outputs.started_at) would crash on an empty timestamp
+      # before ever writing the evidence file, violating the requirement
+      # that evidence is always uploaded, even on failure.
+      - name: Compute run identifiers
+        id: ids
+        run: |
+          set -euo pipefail
+          {
+            echo "namespace=signalchord-drill-${{ github.run_id }}"
+            echo "restore_namespace=signalchord-restore-drill-${{ github.run_id }}"
+            echo "started_at=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)"
+          } >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/sections" "$RUNNER_TEMP/events" "$RUNNER_TEMP/logs"
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install drill dependencies (confluent-kafka, age, mc)
+        run: |
+          set -euo pipefail
+          pip install --quiet confluent-kafka==2.10.0
+          sudo apt-get update
+          sudo apt-get install -y age
+          docker create --name mc-extract minio/mc:RELEASE.2025-04-16T18-13-26Z
+          docker cp mc-extract:/usr/bin/mc "$RUNNER_TEMP/mc"
+          docker rm mc-extract >/dev/null
+          sudo install -m 0755 "$RUNNER_TEMP/mc" /usr/local/bin/mc
+
+      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1
+        with:
+          cluster_name: signalchord-drill
+
+      - name: Build service images
+        run: |
+          set -euo pipefail
+          docker build -f infrastructure/docker/control-plane.Dockerfile -t localhost/signalchord-control-plane:drill .
+          docker build -f infrastructure/docker/web.Dockerfile -t localhost/signalchord-web:drill .
+          docker build -f infrastructure/docker/python-service.Dockerfile -t localhost/signalchord-python:drill .
+          docker build -f infrastructure/docker/go-service.Dockerfile --build-arg TARGET=./document-fetcher/cmd -t localhost/signalchord-document-fetcher:drill .
+          docker build -f infrastructure/docker/go-service.Dockerfile --build-arg TARGET=./stream-normalizer/cmd -t localhost/signalchord-stream-normalizer:drill .
+          docker build -f infrastructure/docker/go-service.Dockerfile --build-arg TARGET=./realtime-gateway -t localhost/signalchord-realtime-gateway:drill .
+          docker build -f infrastructure/docker/go-service.Dockerfile --build-arg TARGET=./feed-collector -t localhost/signalchord-feed-collector:drill .
+
+      - name: Load images into kind
+        run: |
+          set -euo pipefail
+          kind load docker-image \
+            localhost/signalchord-control-plane:drill \
+            localhost/signalchord-web:drill \
+            localhost/signalchord-python:drill \
+            localhost/signalchord-document-fetcher:drill \
+            localhost/signalchord-stream-normalizer:drill \
+            localhost/signalchord-realtime-gateway:drill \
+            localhost/signalchord-feed-collector:drill \
+            --name "$KIND_CLUSTER"
+
+      - name: Prepare namespace, runtime secret and TLS certificate
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          kubectl create namespace "$NAMESPACE"
+          kubectl label namespace "$NAMESPACE" pod-security.kubernetes.io/enforce=restricted --overwrite
+          kubectl annotate namespace "$NAMESPACE" signalchord.io/restore-target=allowed
+
+          umask 077
+          runtime_env="$RUNNER_TEMP/runtime.env"
+          postgres_password=$(openssl rand -hex 16)
+          neo4j_password=$(openssl rand -hex 16)
+          {
+            echo "POSTGRES_DB=signalchord"
+            echo "POSTGRES_USER=signalchord"
+            echo "POSTGRES_PASSWORD=${postgres_password}"
+            echo "DATABASE_URL=postgresql://signalchord:${postgres_password}@postgres:5432/signalchord"
+            echo "SECRET_KEY_BASE=$(openssl rand -hex 64)"
+            echo "CONTROL_PLANE_INTERNAL_TOKEN=$(openssl rand -hex 32)"
+            echo "NOTIFICATION_TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)"
+            echo "NEO4J_USER=neo4j"
+            echo "NEO4J_PASSWORD=${neo4j_password}"
+            echo "NEO4J_AUTH=neo4j/${neo4j_password}"
+            echo "MINIO_ACCESS_KEY=signalchord"
+            echo "MINIO_SECRET_KEY=$(openssl rand -hex 32)"
+            echo "SMTP_HOST=smtp-blackhole.invalid"
+            echo "EXPO_PUSH_URL=https://expo-blackhole.invalid/push"
+          } > "$runtime_env"
+          chmod 600 "$runtime_env"
+          echo "runtime_env_path=$runtime_env" >> "$GITHUB_ENV"
+          kubectl -n "$NAMESPACE" create secret generic signalchord-runtime --from-env-file="$runtime_env"
+
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout "$RUNNER_TEMP/tls.key" -out "$RUNNER_TEMP/tls.crt" \
+            -subj "/CN=signalchord-drill.local" >/dev/null 2>&1
+          kubectl -n "$NAMESPACE" create secret tls signalchord-drill-tls \
+            --cert="$RUNNER_TEMP/tls.crt" --key="$RUNNER_TEMP/tls.key"
+
+          age-keygen -o "$RUNNER_TEMP/drill.agekey" 2>"$RUNNER_TEMP/drill.agekey.pub.log"
+          age-keygen -y "$RUNNER_TEMP/drill.agekey" > "$RUNNER_TEMP/drill.agekey.pub"
+          echo "age_recipient=$(cat "$RUNNER_TEMP/drill.agekey.pub")" >> "$GITHUB_ENV"
+
+      - name: Install signalchord-community (original namespace)
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          helm upgrade --install signalchord-community infrastructure/kubernetes/helm/signalchord-community \
+            --namespace "$NAMESPACE" \
+            --set storageClassName=standard \
+            --set monitoring.enabled=false \
+            --wait --timeout 15m
+
+      - name: Install signalchord (original namespace)
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          helm upgrade --install signalchord infrastructure/kubernetes/helm/signalchord \
+            --namespace "$NAMESPACE" \
+            --values infrastructure/kubernetes/helm/signalchord/values-single-server.yaml \
+            --set global.imageRegistry=localhost \
+            --set global.imageTag=drill \
+            --set-string ingress.host=signalchord-drill.local \
+            --set-string ingress.tlsSecretName=signalchord-drill-tls \
+            --set-string global.config.webOrigin=https://signalchord-drill.local \
+            --wait --timeout 15m
+
+      - name: Verify workloads, storage and control-plane health
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          for resource in statefulset/kafka statefulset/postgres statefulset/neo4j statefulset/valkey statefulset/minio; do
+            kubectl -n "$NAMESPACE" rollout status "$resource" --timeout=10m
+          done
+          kubectl -n "$NAMESPACE" get deployment -l app.kubernetes.io/part-of=signalchord -o name |
+            while IFS= read -r deployment; do
+              [ -n "$deployment" ] || continue
+              kubectl -n "$NAMESPACE" rollout status "$deployment" --timeout=10m
+            done
+          pending_pvcs=$(kubectl -n "$NAMESPACE" get pvc -o jsonpath='{range .items[?(@.status.phase!="Bound")]}{.metadata.name}{" "}{.status.phase}{"\n"}{end}')
+          if [ -n "$pending_pvcs" ]; then
+            echo "unbound PVCs: $pending_pvcs" >&2
+            exit 1
+          fi
+          kubectl -n "$NAMESPACE" exec deployment/signalchord-control-plane -- curl -fsS http://localhost:3000/healthz >/dev/null
+          echo "signalchord workloads and storage are healthy; control-plane answered /healthz"
+
+      - name: Start in-cluster Kafka drill tool
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          cat <<EOF_POD | kubectl -n "$NAMESPACE" apply -f -
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: signalchord-drill-tool
+            labels: {app.kubernetes.io/name: recovery-drill-tool}
+          spec:
+            restartPolicy: Never
+            automountServiceAccountToken: false
+            securityContext:
+              runAsNonRoot: true
+              runAsUser: 10001
+              runAsGroup: 10001
+              seccompProfile: {type: RuntimeDefault}
+            containers:
+              - name: drill-tool
+                image: localhost/signalchord-python:drill
+                imagePullPolicy: Never
+                command: [sleep, "3600"]
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities: {drop: [ALL]}
+          EOF_POD
+          kubectl -n "$NAMESPACE" wait --for=condition=Ready pod/signalchord-drill-tool --timeout=120s
+          kubectl -n "$NAMESPACE" cp scripts/recovery-drill/kafka_tool.py "signalchord-drill-tool:/tmp/kafka_tool.py"
+
+      - name: Seed 2+ tenants
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" exec deployment/signalchord-control-plane -- bin/rails db:seed
+          kubectl -n "$NAMESPACE" exec -i deployment/signalchord-control-plane -- bin/rails runner - \
+            < scripts/recovery-drill/seed_second_tenant.rb
+
+      - name: Capture pre-failure Postgres baseline
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          sh scripts/recovery-drill/verify_postgres.sh --namespace "$NAMESPACE" --output "$RUNNER_TEMP/baseline.txt"
+          cat "$RUNNER_TEMP/baseline.txt"
+
+      - name: Extract destination MinIO credentials
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          umask 077
+          kubectl -n "$NAMESPACE" get secret signalchord-runtime -o jsonpath='{.data.MINIO_ACCESS_KEY}' | base64 -d > "$RUNNER_TEMP/minio-access-key"
+          kubectl -n "$NAMESPACE" get secret signalchord-runtime -o jsonpath='{.data.MINIO_SECRET_KEY}' | base64 -d > "$RUNNER_TEMP/minio-secret-key"
+
+      - name: Run backup-postgres-only.sh and prove no downtime
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          before_replicas=$(kubectl -n "$NAMESPACE" get deployment signalchord-control-plane -o jsonpath='{.spec.replicas}')
+          (
+            end=$((SECONDS + 20))
+            zero_seen=0
+            while [ $SECONDS -lt $end ]; do
+              replicas=$(kubectl -n "$NAMESPACE" get deployment signalchord-control-plane -o jsonpath='{.spec.replicas}' 2>/dev/null || echo "$before_replicas")
+              if [ "$replicas" = "0" ]; then zero_seen=1; fi
+              sleep 1
+            done
+            echo "$zero_seen" > "$RUNNER_TEMP/scale-to-zero-observed"
+          ) &
+          poller_pid=$!
+
+          set +e
+          sh scripts/single-server/backup-postgres-only.sh \
+            --namespace "$NAMESPACE" \
+            --runtime-env "$runtime_env_path" \
+            --age-recipient "$age_recipient" \
+            --minio-endpoint minio:9000 \
+            --minio-bucket signalchord-backups-postgres-only \
+            --minio-access-key-file "$RUNNER_TEMP/minio-access-key" \
+            --minio-secret-key-file "$RUNNER_TEMP/minio-secret-key" \
+            --minio-insecure \
+            --yes > "$RUNNER_TEMP/logs/backup-postgres-only.log" 2>&1
+          pg_only_exit=$?
+          set -e
+          wait "$poller_pid" || true
+          cat "$RUNNER_TEMP/logs/backup-postgres-only.log"
+
+          after_replicas=$(kubectl -n "$NAMESPACE" get deployment signalchord-control-plane -o jsonpath='{.spec.replicas}')
+          zero_seen=$(cat "$RUNNER_TEMP/scale-to-zero-observed" 2>/dev/null || echo 1)
+
+          python3 - "$pg_only_exit" "$zero_seen" "$before_replicas" "$after_replicas" <<'PY'
+          import json, sys
+          exit_code, zero_seen, before_replicas, after_replicas = sys.argv[1:5]
+          failures = []
+          if exit_code != "0":
+              failures.append(f"backup-postgres-only.sh exited {exit_code}")
+          if zero_seen != "0":
+              failures.append("control-plane was scaled to zero during the no-downtime backup")
+          if before_replicas != after_replicas:
+              failures.append(f"control-plane replica count changed: {before_replicas} -> {after_replicas}")
+          section = {
+              "artifact": "signalchord-backups-postgres-only (MinIO)",
+              "creation_result": "pass" if exit_code == "0" else "fail",
+              "validation_result": "pass" if not failures else "fail",
+              "failures": failures,
+          }
+          with open("${{ runner.temp }}/sections/backup_postgres_only.json", "w") as handle:
+              json.dump(section, handle)
+          PY
+
+      - name: Run full backup.sh
+        id: full_backup
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          backup_output="$RUNNER_TEMP/full-backup"
+          set +e
+          sh scripts/single-server/backup.sh \
+            --namespace "$NAMESPACE" \
+            --output "$backup_output" \
+            --runtime-env "$runtime_env_path" \
+            --age-recipient "$age_recipient" \
+            --dest-minio-endpoint minio:9000 \
+            --dest-minio-bucket signalchord-backups-full \
+            --dest-minio-access-key-file "$RUNNER_TEMP/minio-access-key" \
+            --dest-minio-secret-key-file "$RUNNER_TEMP/minio-secret-key" \
+            --dest-minio-insecure \
+            --yes > "$RUNNER_TEMP/logs/backup-full.log" 2>&1
+          exit_code=$?
+          set -e
+          cat "$RUNNER_TEMP/logs/backup-full.log"
+          echo "backup_output=$backup_output" >> "$GITHUB_OUTPUT"
+
+          creation_result="pass"
+          validation_result="pass"
+          if [ "$exit_code" -ne 0 ]; then
+            creation_result="fail"
+            validation_result="fail"
+          elif [ ! -f "$backup_output/manifest.json" ] || [ ! -f "$backup_output/SHA256SUMS" ]; then
+            validation_result="fail"
+          fi
+          python3 - "$creation_result" "$validation_result" "$backup_output" <<'PY'
+          import json, sys
+          creation_result, validation_result, backup_output = sys.argv[1:4]
+          section = {
+              "artifact": backup_output,
+              "creation_result": creation_result,
+              "validation_result": validation_result,
+          }
+          with open("${{ runner.temp }}/sections/backup.json", "w") as handle:
+              json.dump(section, handle)
+          PY
+
+      - name: Prepare an empty restore-target namespace (simulated data loss)
+        env:
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: |
+          set -euo pipefail
+          kubectl create namespace "$RESTORE_NAMESPACE"
+          kubectl label namespace "$RESTORE_NAMESPACE" pod-security.kubernetes.io/enforce=restricted --overwrite
+          helm upgrade --install signalchord-community infrastructure/kubernetes/helm/signalchord-community \
+            --namespace "$RESTORE_NAMESPACE" \
+            --set storageClassName=standard \
+            --set monitoring.enabled=false \
+            --wait --timeout 15m
+          kubectl -n "$RESTORE_NAMESPACE" create secret generic signalchord-runtime --from-env-file="$runtime_env_path"
+          openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
+            -keyout "$RUNNER_TEMP/restore-tls.key" -out "$RUNNER_TEMP/restore-tls.crt" \
+            -subj "/CN=signalchord-restore-drill.local" >/dev/null 2>&1
+          kubectl -n "$RESTORE_NAMESPACE" create secret tls signalchord-drill-tls \
+            --cert="$RUNNER_TEMP/restore-tls.crt" --key="$RUNNER_TEMP/restore-tls.key"
+          helm upgrade --install signalchord infrastructure/kubernetes/helm/signalchord \
+            --namespace "$RESTORE_NAMESPACE" \
+            --values infrastructure/kubernetes/helm/signalchord/values-single-server.yaml \
+            --set global.imageRegistry=localhost \
+            --set global.imageTag=drill \
+            --set-string ingress.host=signalchord-restore-drill.local \
+            --set-string ingress.tlsSecretName=signalchord-drill-tls \
+            --set-string global.config.webOrigin=https://signalchord-restore-drill.local \
+            --wait --timeout 15m
+
+      - name: Negative restore test (refuses without the restore-target annotation)
+        env:
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: |
+          set -euo pipefail
+          set +e
+          sh scripts/single-server/restore.sh \
+            --namespace "$RESTORE_NAMESPACE" \
+            --backup "${{ steps.full_backup.outputs.backup_output }}" \
+            --age-identity "$RUNNER_TEMP/drill.agekey" \
+            --host signalchord-restore-drill.local \
+            --confirm-context "$(kubectl config current-context)" \
+            --smtp-blackhole-host smtp-blackhole.invalid \
+            --expo-blackhole-url https://expo-blackhole.invalid/push \
+            --yes > "$RUNNER_TEMP/logs/restore-negative.log" 2>&1
+          negative_exit=$?
+          set -e
+          cat "$RUNNER_TEMP/logs/restore-negative.log"
+          if [ "$negative_exit" -eq 0 ]; then
+            echo "restore-v1.sh must refuse an unannotated namespace" >&2
+            echo "unannotated_refusal=fail" >> "$GITHUB_ENV"
+          else
+            echo "unannotated_refusal=pass" >> "$GITHUB_ENV"
+          fi
+
+      - name: Annotate the restore-target namespace
+        env:
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: kubectl annotate namespace "$RESTORE_NAMESPACE" signalchord.io/restore-target=allowed
+
+      - name: Positive restore test (full path)
+        env:
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          set +e
+          sh scripts/single-server/restore.sh \
+            --namespace "$RESTORE_NAMESPACE" \
+            --backup "${{ steps.full_backup.outputs.backup_output }}" \
+            --age-identity "$RUNNER_TEMP/drill.agekey" \
+            --host signalchord-restore-drill.local \
+            --confirm-context "$(kubectl config current-context)" \
+            --smtp-blackhole-host smtp-blackhole.invalid \
+            --expo-blackhole-url https://expo-blackhole.invalid/push \
+            --yes > "$RUNNER_TEMP/logs/restore-positive.log" 2>&1
+          restore_exit=$?
+          set -e
+          cat "$RUNNER_TEMP/logs/restore-positive.log"
+          finish=$(date +%s)
+          echo "restore_duration=$((finish - start))" >> "$GITHUB_ENV"
+          echo "restore_exit=$restore_exit" >> "$GITHUB_ENV"
+
+      - name: Verify restored Postgres data matches the baseline exactly
+        env:
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: |
+          set -euo pipefail
+          sh scripts/recovery-drill/verify_postgres.sh --namespace "$RESTORE_NAMESPACE" --output "$RUNNER_TEMP/restored.txt"
+          cat "$RUNNER_TEMP/restored.txt"
+
+          rails_migrate_status=$(kubectl -n "$RESTORE_NAMESPACE" exec deployment/signalchord-control-plane -- bin/rails db:migrate:status | grep -c '^   down' || true)
+
+          python3 - "$rails_migrate_status" "$unannotated_refusal" "$restore_exit" "$restore_duration" \
+            "$RUNNER_TEMP/baseline.txt" "$RUNNER_TEMP/restored.txt" "$RUNNER_TEMP/sections/restore.json" <<'PY'
+          import json
+          import sys
+
+          (
+              rails_migrate_status,
+              unannotated_refusal,
+              restore_exit,
+              restore_duration,
+              baseline_path,
+              restored_path,
+              output_path,
+          ) = sys.argv[1:8]
+
+          baseline = {}
+          with open(baseline_path, encoding="utf-8") as handle:
+              for line in handle:
+                  table, count, checksum = line.strip().split("|")
+                  baseline[table] = (count, checksum)
+
+          restored = {}
+          with open(restored_path, encoding="utf-8") as handle:
+              for line in handle:
+                  table, count, checksum = line.strip().split("|")
+                  restored[table] = (count, checksum)
+
+          failures = []
+          verified = {}
+          for table, (count, checksum) in baseline.items():
+              got = restored.get(table)
+              verified[table] = {"expected_count": count, "expected_checksum": checksum, "restored": got}
+              if got != (count, checksum):
+                  failures.append(f"table {table} mismatch: expected {(count, checksum)}, got {got}")
+
+          if rails_migrate_status != "0":
+              failures.append("rails db:migrate:status reports pending migrations after restore")
+          if unannotated_refusal != "pass":
+              failures.append("restore-v1.sh did not refuse the unannotated namespace")
+          if restore_exit != "0":
+              failures.append(f"restore-v1.sh exited {restore_exit}")
+
+          section = {
+              "result": "pass" if not failures else "fail",
+              "duration_seconds": float(restore_duration or 0),
+              "verified": verified,
+              "failures": failures,
+          }
+          with open(output_path, "w", encoding="utf-8") as handle:
+              json.dump(section, handle)
+          PY
+
+      - name: Verify zero real outbound calls from the restored environment
+        env:
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: |
+          set -euo pipefail
+          smtp_host=$(kubectl -n "$RESTORE_NAMESPACE" get secret signalchord-runtime -o jsonpath='{.data.SMTP_HOST}' | base64 -d)
+          expo_url=$(kubectl -n "$RESTORE_NAMESPACE" get secret signalchord-runtime -o jsonpath='{.data.EXPO_PUSH_URL}' | base64 -d)
+          if [ "$smtp_host" != "smtp-blackhole.invalid" ] || [ "$expo_url" != "https://expo-blackhole.invalid/push" ]; then
+            echo "restored runtime secret does not point at black-hole endpoints" >&2
+            exit 1
+          fi
+          echo "restored runtime secret points at black-hole SMTP/Expo endpoints only"
+
+      - name: Kafka replay and duplicate-suppression (alert.created.v1)
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          drill_kafka() {
+            kubectl -n "$NAMESPACE" exec signalchord-drill-tool -- python3 /tmp/kafka_tool.py --bootstrap-server kafka:9092 "$@"
+          }
+          push_event() {
+            kubectl -n "$NAMESPACE" cp "$1" "signalchord-drill-tool:/tmp/event.json"
+          }
+          count_alerts() {
+            # shellcheck disable=SC2016
+            kubectl -n "$NAMESPACE" exec statefulset/postgres -- sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -t -A -c "SELECT count(*) FROM alerts WHERE stable_id='"'"'00000000-0000-4000-8000-00000000a001'"'"';"'
+          }
+
+          cat > "$RUNNER_TEMP/events/alert.json" <<'EOF'
+          {"event_id":"drill-alert-event-1","tenant_id":"00000000-0000-4000-8000-000000000001","payload":{"alert_id":"00000000-0000-4000-8000-00000000a001","title":"Drill Alert","alert_score":90,"severity_code":2,"routing_code":1}}
+          EOF
+          push_event "$RUNNER_TEMP/events/alert.json"
+
+          offsets_before=$(drill_kafka offsets --topic alert.created.v1 --group signalchord-alert-projector-v1)
+          drill_kafka produce --topic alert.created.v1 --key drill-alert-1 --value-file /tmp/event.json
+          sleep 8
+          count_before=$(count_alerts)
+
+          from_datetime=$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%S.000 2>/dev/null || date -u -v-5M +%Y-%m-%dT%H:%M:%S.000)
+          set +e
+          sh scripts/single-server/replay-kafka.sh \
+            --namespace "$NAMESPACE" \
+            --group signalchord-alert-projector-v1 \
+            --topic alert.created.v1 \
+            --to-datetime "$from_datetime" \
+            --yes > "$RUNNER_TEMP/logs/replay.log" 2>&1
+          replay_exit=$?
+          set -e
+          cat "$RUNNER_TEMP/logs/replay.log"
+          sleep 8
+          offsets_after=$(drill_kafka offsets --topic alert.created.v1 --group signalchord-alert-projector-v1)
+          count_after=$(count_alerts)
+
+          python3 - <<PY
+          import json, sys
+          sys.path.insert(0, "scripts/recovery-drill")
+          import assertions
+
+          offsets_before = json.loads('''$offsets_before''')
+          offsets_after = json.loads('''$offsets_after''')
+          failures = []
+          if $replay_exit != 0:
+              failures.append("replay-kafka.sh exited $replay_exit")
+          failures += assertions.assert_row_count_unchanged(before=$count_before, after=$count_after)
+
+          section = {
+              "topic": "alert.created.v1",
+              "group": "signalchord-alert-projector-v1",
+              "partitions": sorted({int(k.rsplit("-", 1)[1]) for k in offsets_before}),
+              "requested_time_range": {"to_datetime": "$from_datetime"},
+              "offsets_before": offsets_before,
+              "offsets_after": offsets_after,
+              "result": "pass" if not failures else "fail",
+              "failures": failures,
+          }
+          with open("${{ runner.temp }}/sections/replay.json", "w") as handle:
+              json.dump(section, handle)
+
+          duplicate_section = {
+              "assertions": {"row_count_before": $count_before, "row_count_after": $count_after},
+              "result": "pass" if not failures else "fail",
+              "failures": failures,
+          }
+          with open("${{ runner.temp }}/sections/duplicate_suppression.json", "w") as handle:
+              json.dump(duplicate_section, handle)
+          PY
+
+      - name: Python poison message (graph-projector)
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          drill_kafka() {
+            kubectl -n "$NAMESPACE" exec signalchord-drill-tool -- python3 /tmp/kafka_tool.py --bootstrap-server kafka:9092 "$@"
+          }
+          push_event() {
+            kubectl -n "$NAMESPACE" cp "$1" "signalchord-drill-tool:/tmp/event.json"
+          }
+
+          offsets_before=$(drill_kafka offsets --topic graph.mutation-requested.v1 --group signalchord-graph-projector-v1)
+
+          cat > "$RUNNER_TEMP/events/py-poison.json" <<'EOF'
+          {"tenant_id":"00000000-0000-4000-8000-000000000001","event_id":"drill-poison-python-1","payload":{"mutation_type":"does_not_exist","stable_id":"drill:poison","properties":{}}}
+          EOF
+          push_event "$RUNNER_TEMP/events/py-poison.json"
+          poison_delivery=$(drill_kafka produce --topic graph.mutation-requested.v1 --key drill-python-pair --value-file /tmp/event.json)
+
+          cat > "$RUNNER_TEMP/events/py-healthy.json" <<'EOF'
+          {"tenant_id":"00000000-0000-4000-8000-000000000001","event_id":"drill-healthy-python-1","payload":{"mutation_type":"upsert_document","stable_id":"drill:healthy-doc","properties":{"title":"Drill healthy doc"}}}
+          EOF
+          push_event "$RUNNER_TEMP/events/py-healthy.json"
+          drill_kafka produce --topic graph.mutation-requested.v1 --key drill-python-pair --value-file /tmp/event.json >/dev/null
+
+          sleep 10
+          dlq_messages=$(drill_kafka consume --topic graph.mutation-requested.v1.dlq --group "drill-dlq-probe-$RANDOM" --from-beginning --max-messages 5 --timeout-seconds 15)
+          completed_messages=$(drill_kafka consume --topic graph.mutation-completed.v1 --group "drill-completed-probe-$RANDOM" --from-beginning --max-messages 20 --timeout-seconds 15)
+          offsets_after=$(drill_kafka offsets --topic graph.mutation-requested.v1 --group signalchord-graph-projector-v1)
+
+          python3 - <<PY
+          import json, sys
+          sys.path.insert(0, "scripts/recovery-drill")
+          import assertions
+
+          poison_delivery = json.loads('''$poison_delivery''')
+          offsets_before = json.loads('''$offsets_before''')
+          offsets_after = json.loads('''$offsets_after''')
+          dlq_messages = [json.loads(line) for line in '''$dlq_messages'''.splitlines() if line.strip()]
+          completed_messages = [json.loads(line) for line in '''$completed_messages'''.splitlines() if line.strip()]
+
+          failures = []
+          failures += assertions.assert_exactly_one_dlq_message(dlq_messages)
+          envelope = {}
+          if dlq_messages:
+              envelope = json.loads(dlq_messages[0]["value"])
+              failures += assertions.assert_dlq_envelope(
+                  envelope,
+                  expected_origin="graph-projector",
+                  expected_source_topic="graph.mutation-requested.v1",
+                  content_field="failed_event",
+              )
+
+          key = "graph.mutation-requested.v1-" + str(poison_delivery["partition"])
+          before = offsets_before.get(key, {}).get("committed_offset") or 0
+          after = offsets_after.get(key, {}).get("committed_offset") or 0
+          failures += assertions.assert_offset_advanced_past(before=before, after=after, target_offset=poison_delivery["offset"])
+
+          healthy_processed = any(
+              json.loads(m["value"]).get("payload", {}).get("stable_id") == "drill:healthy-doc"
+              for m in completed_messages
+          )
+          if not healthy_processed:
+              failures.append("healthy message behind the poison message was not processed")
+
+          section = {
+              "source_topic": "graph.mutation-requested.v1",
+              "dlq_topic": "graph.mutation-requested.v1.dlq",
+              "source_offset": poison_delivery["offset"],
+              "dlq_offset": dlq_messages[0]["offset"] if dlq_messages else None,
+              "metadata_assertions": envelope,
+              "healthy_following_message_result": "pass" if healthy_processed else "fail",
+              "failures": failures,
+          }
+          with open("${{ runner.temp }}/sections/python_poison_message.json", "w") as handle:
+              json.dump(section, handle)
+          PY
+
+      - name: Go poison message (realtime-gateway)
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          drill_kafka() {
+            kubectl -n "$NAMESPACE" exec signalchord-drill-tool -- python3 /tmp/kafka_tool.py --bootstrap-server kafka:9092 "$@"
+          }
+
+          offsets_before=$(drill_kafka offsets --topic graph.mutation-completed.v1 --group signalchord-realtime-gateway-v1)
+          poison_delivery=$(drill_kafka produce --topic graph.mutation-completed.v1 --key drill-go-pair --value "{not valid json")
+          healthy_delivery=$(drill_kafka produce --topic graph.mutation-completed.v1 --key drill-go-pair --value '{"tenant_id":"00000000-0000-4000-8000-000000000001","event_type":"graph.mutation-completed.v1","payload":{"stable_id":"drill:go-healthy"}}')
+
+          sleep 10
+          dlq_messages=$(drill_kafka consume --topic graph.mutation-completed.v1.dlq --group "drill-go-dlq-probe-$RANDOM" --from-beginning --max-messages 5 --timeout-seconds 15)
+          offsets_after=$(drill_kafka offsets --topic graph.mutation-completed.v1 --group signalchord-realtime-gateway-v1)
+
+          python3 - <<PY
+          import json, sys
+          sys.path.insert(0, "scripts/recovery-drill")
+          import assertions
+
+          poison_delivery = json.loads('''$poison_delivery''')
+          healthy_delivery = json.loads('''$healthy_delivery''')
+          offsets_before = json.loads('''$offsets_before''')
+          offsets_after = json.loads('''$offsets_after''')
+          dlq_messages = [json.loads(line) for line in '''$dlq_messages'''.splitlines() if line.strip()]
+
+          failures = []
+          failures += assertions.assert_exactly_one_dlq_message(dlq_messages)
+          envelope = {}
+          if dlq_messages:
+              envelope = json.loads(dlq_messages[0]["value"])
+              failures += assertions.assert_dlq_envelope(
+                  envelope,
+                  expected_origin="realtime-gateway",
+                  expected_source_topic="graph.mutation-completed.v1",
+                  content_field="value",
+              )
+
+          key = "graph.mutation-completed.v1-" + str(poison_delivery["partition"])
+          before = offsets_before.get(key, {}).get("committed_offset") or 0
+          after = offsets_after.get(key, {}).get("committed_offset") or 0
+          failures += assertions.assert_offset_advanced_past(before=before, after=after, target_offset=poison_delivery["offset"])
+
+          healthy_processed = after > healthy_delivery["offset"]
+          if not healthy_processed:
+              failures.append("committed offset never advanced past the healthy message behind the poison message")
+
+          section = {
+              "source_topic": "graph.mutation-completed.v1",
+              "dlq_topic": "graph.mutation-completed.v1.dlq",
+              "source_offset": poison_delivery["offset"],
+              "dlq_offset": dlq_messages[0]["offset"] if dlq_messages else None,
+              "metadata_assertions": envelope,
+              "healthy_following_message_result": "pass" if healthy_processed else "fail",
+              "failures": failures,
+          }
+          with open("${{ runner.temp }}/sections/go_poison_message.json", "w") as handle:
+              json.dump(section, handle)
+          PY
+
+      - name: Transient failure (claim-intelligence)
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+        run: |
+          set -euo pipefail
+          drill_kafka() {
+            kubectl -n "$NAMESPACE" exec signalchord-drill-tool -- python3 /tmp/kafka_tool.py --bootstrap-server kafka:9092 "$@"
+          }
+          push_event() {
+            kubectl -n "$NAMESPACE" cp "$1" "signalchord-drill-tool:/tmp/event.json"
+          }
+
+          offsets_before=$(drill_kafka offsets --topic claim.extracted.v1 --group signalchord-claim-intelligence-v1)
+
+          cat > "$RUNNER_TEMP/events/transient.json" <<'EOF'
+          {"tenant_id":"00000000-0000-4000-8000-000000000001","event_id":"drill-transient-1","correlation_id":"drill-corr-1","payload":{"claim_id":"drill:claim:transient","document_id":"drill:doc:transient","confidence":0.9,"evidence":{"evidence_id":"drill:ev:transient","document_id":"drill:doc:transient","start_offset":0,"end_offset":1,"span_hash":"x"}}}
+          EOF
+          push_event "$RUNNER_TEMP/events/transient.json"
+          drill_kafka produce --topic claim.extracted.v1 --key drill-transient-1 --value-file /tmp/event.json >/dev/null
+
+          sleep 20
+          dlq_messages=$(drill_kafka consume --topic claim.extracted.v1.dlq --group "drill-transient-dlq-probe-$RANDOM" --from-beginning --max-messages 5 --timeout-seconds 15)
+          offsets_after=$(drill_kafka offsets --topic claim.extracted.v1 --group signalchord-claim-intelligence-v1)
+
+          python3 - <<PY
+          import json, sys
+          sys.path.insert(0, "scripts/recovery-drill")
+          import assertions
+
+          offsets_before = json.loads('''$offsets_before''')
+          offsets_after = json.loads('''$offsets_after''')
+          dlq_messages = [json.loads(line) for line in '''$dlq_messages'''.splitlines() if line.strip()]
+
+          failures = []
+          failures += assertions.assert_no_dlq_message(dlq_messages)
+
+          any_partition_moved = False
+          for key, after in offsets_after.items():
+              before = offsets_before.get(key, {})
+              if (after.get("committed_offset") or 0) != (before.get("committed_offset") or 0):
+                  any_partition_moved = True
+          if any_partition_moved:
+              failures.append("committed offset advanced for a transient failure")
+
+          section = {
+              "dlq_absent": len(dlq_messages) == 0,
+              "acknowledgment_absent": not any_partition_moved,
+              "retry_redelivery_result": "pass" if not failures else "fail",
+              "failures": failures,
+          }
+          with open("${{ runner.temp }}/sections/transient_failure.json", "w") as handle:
+              json.dump(section, handle)
+          PY
+
+      - name: Cleanup
+        if: always()
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: |
+          set +e
+          kind delete cluster --name "$KIND_CLUSTER"
+          cleanup_exit=$?
+          set -e
+          python3 - "$cleanup_exit" <<'PY'
+          import json, sys
+          exit_code = sys.argv[1]
+          section = {"result": "pass" if exit_code == "0" else "fail"}
+          with open("${{ runner.temp }}/sections/cleanup.json", "w") as handle:
+              json.dump(section, handle)
+          PY
+
+      - name: Build recovery evidence artifact
+        if: always()
+        run: |
+          set -euo pipefail
+          finished_at=$(date -u +%Y-%m-%dT%H:%M:%S+00:00)
+          python3 scripts/recovery-drill/build_evidence.py \
+            --sections-dir "$RUNNER_TEMP/sections" \
+            --run-id "${{ github.run_id }}" \
+            --git-sha "${{ github.sha }}" \
+            --started-at "${{ steps.ids.outputs.started_at }}" \
+            --finished-at "$finished_at" \
+            --environment "kind-recovery-drill" \
+            --output "$RUNNER_TEMP/recovery-evidence.json"
+
+      - name: Upload recovery evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: recovery-evidence-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/recovery-evidence.json
+            ${{ runner.temp }}/logs/
+          if-no-files-found: warn
