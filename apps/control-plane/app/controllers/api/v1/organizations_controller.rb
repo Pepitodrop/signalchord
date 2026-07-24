@@ -2,6 +2,7 @@ module Api
   module V1
     class OrganizationsController < ApplicationController
       include CookieSession
+      include DummyTimingAuthentication
 
       # No pending session exists to authenticate this action (decision 5) —
       # it takes fresh email+password in the body and re-validates them
@@ -27,7 +28,7 @@ module Api
         name = params.require(:name).to_s
 
         user = User.find_by(email:)
-        unless user&.authenticate(password) && !user.disabled?
+        unless authenticate_with_dummy_timing(user, password) && !user&.disabled?
           return render json: { error: "invalid_credentials" }, status: :unauthorized
         end
         return render json: { error: "verification_required" }, status: :forbidden unless user.email_verified?

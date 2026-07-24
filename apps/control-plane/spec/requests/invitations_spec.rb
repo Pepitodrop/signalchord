@@ -55,6 +55,17 @@ RSpec.describe "invitations", type: :request do
       post "/api/v1/invitations/accept", params: { invitation_token: "sc_inv_bogus", password: "another-correct-horse" }
       expect(response).to have_http_status(:unauthorized)
     end
+
+    it "is throttled after repeated attempts from one IP (mints a session from a client-supplied token, same abuse surface as login/signup)" do
+      Rack::Attack.cache.store.clear
+      begin
+        30.times { post "/api/v1/invitations/accept", params: { invitation_token: "sc_inv_bogus", password: "whatever" } }
+        post "/api/v1/invitations/accept", params: { invitation_token: "sc_inv_bogus", password: "whatever" }
+        expect(response).to have_http_status(:too_many_requests)
+      ensure
+        Rack::Attack.cache.store.clear
+      end
+    end
   end
 
   describe "POST /api/v1/invitations (issue an invitation)" do

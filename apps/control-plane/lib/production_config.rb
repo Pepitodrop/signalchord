@@ -43,6 +43,14 @@ module ProductionConfig
     env["SIGNALCHORD_ENV"] == "production"
   end
 
+  # Rails' Host-header allow-list (config.hosts). Empty array = no
+  # restriction (Rails' own default), so deployments that haven't set
+  # RAILS_ALLOWED_HOSTS yet keep today's behavior — this only tightens
+  # things once it's actually configured.
+  def allowed_hosts(env = ENV)
+    env.fetch("RAILS_ALLOWED_HOSTS", "").split(",").map(&:strip).reject(&:empty?)
+  end
+
   def validate_kafka(env)
     errors = []
     brokers = env.fetch("KAFKA_BROKERS", "").split(",").map(&:strip).reject(&:empty?)

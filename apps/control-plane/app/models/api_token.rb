@@ -24,7 +24,19 @@ class ApiToken < ApplicationRecord
     Digest::SHA256.hexdigest(plaintext)
   end
 
-  def allows?(scope)
-    Array(scopes).include?(scope) || Array(scopes).include?("*")
+  # Shared by ApplicationController (web/mobile requests) and
+  # Internal::V1::TokensController (service-to-service SSE auth) so "what
+  # counts as disabled" is defined in exactly one place. Tokens with no
+  # bound user (user_id nil) have no membership to check, so they're never
+  # considered disabled here.
+  #
+  # membership: pass an already-resolved Membership to reuse a caller's own
+  # memoized lookup (ApplicationController#current_membership already
+  # queries this once per request) instead of a second query for the same row.
+  def user_or_membership_disabled?(membership: nil)
+    return false unless user_id
+
+    membership ||= Membership.find_by(organization_id:, user_id:)
+    user.nil? || user.disabled? || membership.nil? || membership.disabled?
   end
 end

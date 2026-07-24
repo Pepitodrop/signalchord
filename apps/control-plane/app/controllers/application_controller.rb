@@ -13,7 +13,10 @@ class ApplicationController < ActionController::API
   rescue_from ActionController::ParameterMissing, with: ->(error) {
     render json: { error: "invalid_request", detail: error.message }, status: :bad_request
   }
-  rescue_from Forbidden, with: -> { render_error("forbidden", :forbidden) }
+  rescue_from Forbidden, with: -> {
+    log_security_denial!(event: "forbidden")
+    render_error("forbidden", :forbidden)
+  }
 
   private
 
@@ -28,8 +31,14 @@ class ApplicationController < ActionController::API
       @current_auth_source = :cookie
       @current_api_token = ApiToken.authenticate(bearer_token_from_cookie)
     end
-    return render_error("unauthorized", :unauthorized) unless @current_api_token
-    return render_error("forbidden", :forbidden) if current_user_disabled_or_suspended?
+    unless @current_api_token
+      log_security_denial!(event: "invalid_token")
+      return render_error("unauthorized", :unauthorized)
+    end
+    if current_user_disabled_or_suspended?
+      log_security_denial!(event: "disabled_account")
+      return render_error("forbidden", :forbidden)
+    end
 
     @current_api_token.touch(:last_used_at)
   end
@@ -51,6 +60,7 @@ class ApplicationController < ActionController::API
     origin = request.headers["Origin"]
     return if origin.present? && allowed_origins.include?(origin)
 
+    log_security_denial!(event: "csrf_origin_mismatch")
     render_error("forbidden", :forbidden)
   end
 
@@ -68,7 +78,16 @@ class ApplicationController < ActionController::API
   end
 
   def require_scope!(scope)
-    raise Forbidden unless @current_api_token.allows?(scope)
+    raise Forbidden unless allowed_scopes.include?(scope) || allowed_scopes.include?("*")
+  end
+
+  # User-bound tokens: derive from the LIVE membership role, not the token's
+  # issuance-time scopes snapshot — a role downgrade takes effect on the very
+  # next request, matching how require_role! already re-reads the live role.
+  # Tokens with no bound user (ApiToken#user is optional) have no membership
+  # to consult, so they fall back to the token's own stored scopes.
+  def allowed_scopes
+    current_membership ? Membership.scopes_for(current_membership.role) : @current_api_token.scopes
   end
 
   def require_role!(*roles)
@@ -111,10 +130,25 @@ class ApplicationController < ActionController::API
   end
 
   def current_user_disabled_or_suspended?
-    return false unless @current_api_token&.user_id
+    @current_api_token&.user_or_membership_disabled?(membership: current_membership) || false
+  end
 
-    user = User.find_by(id: @current_api_token.user_id)
-    membership = current_membership
-    user.nil? || user.disabled? || membership.nil? || membership.disabled?
+  # event: short machine-readable reason (invalid_token, disabled_account,
+  # csrf_origin_mismatch, forbidden). org_id/user_id are included only when
+  # resolvable — many denials (invalid token, missing Origin) happen before
+  # any org/user context exists.
+  def log_security_denial!(event:)
+    Rails.logger.warn(
+      {
+        event: "security_denial",
+        reason: event,
+        path: request.path,
+        method: request.method,
+        ip: request.remote_ip,
+        request_id: request.request_id,
+        org_id: @current_api_token&.organization_id,
+        user_id: @current_api_token&.user_id
+      }.compact.to_json
+    )
   end
 end

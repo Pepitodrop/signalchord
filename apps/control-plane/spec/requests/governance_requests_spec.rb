@@ -83,6 +83,75 @@ RSpec.describe "governance requests", type: :request do
     expect(OutboxEvent.where(event_type: "tenant.deletion.requested.v1").count).to eq(1)
   end
 
+  it "rejects an analyst-scoped token on create (Blocker #1 regression)" do
+    analyst = User.create!(email: "analyst@example.com", password: "correct-horse-battery-staple")
+    Membership.create!(organization:, user: analyst, role: "analyst")
+    _record, analyst_token = ApiToken.issue!(organization:, user: analyst, name: "test", scopes: Membership.scopes_for("analyst"))
+
+    post "/api/v1/governance_requests",
+         params: { governance_request: { request_type: "tenant_export" } },
+         headers: { "Authorization" => "Bearer #{analyst_token}" }.merge("Idempotency-Key" => "analyst-attempt")
+
+    expect(response).to have_http_status(:forbidden)
+    expect(organization.governance_requests.where(idempotency_key: "analyst-attempt")).to be_empty
+  end
+
+  it "rejects a reviewer-scoped token on create (Blocker #1 regression)" do
+    reviewer = User.create!(email: "reviewer@example.com", password: "correct-horse-battery-staple")
+    Membership.create!(organization:, user: reviewer, role: "reviewer")
+    _record, reviewer_token = ApiToken.issue!(organization:, user: reviewer, name: "test", scopes: Membership.scopes_for("reviewer"))
+
+    post "/api/v1/governance_requests",
+         params: { governance_request: { request_type: "tenant_export" } },
+         headers: { "Authorization" => "Bearer #{reviewer_token}" }.merge("Idempotency-Key" => "reviewer-attempt")
+
+    expect(response).to have_http_status(:forbidden)
+  end
+
+  it "responds with a clean conflict (not a 500) if a RecordNotUnique occurs and no matching row can be found (Blocker #1 idempotency fix)" do
+    # Same shape as watchlists_spec.rb's equivalent test: a genuine
+    # concurrent race (two requests both see "not found yet") is hard to
+    # force deterministically without mocking internals — this verifies the
+    # narrower, still-important property that an unconditional
+    # RecordNotUnique never surfaces as an unhandled 500.
+    allow_any_instance_of(GovernanceRequest).to receive(:save!).and_raise(
+      ActiveRecord::RecordNotUnique.new("duplicate key value violates unique constraint")
+    )
+
+    post "/api/v1/governance_requests",
+         params: { governance_request: { request_type: "tenant_export" } },
+         headers: auth_headers.merge("Idempotency-Key" => "race-key")
+
+    expect(response).to have_http_status(:conflict)
+    expect(organization.governance_requests.count).to eq(0)
+  end
+
+  it "includes AlertEmailDelivery in the tenant export snapshot (High #6 regression)" do
+    alert = organization.alerts.create!(stable_id: "alert-1", title: "Alert", alert_score: 80, severity_code: 5)
+    delivery = AlertEmailDelivery.create!(organization:, alert:, membership:, status: "delivered")
+
+    post "/api/v1/governance_requests",
+         params: { governance_request: { request_type: "tenant_export" } },
+         headers: auth_headers.merge("Idempotency-Key" => "export-with-deliveries")
+
+    expect(response).to have_http_status(:created)
+    ids = JSON.parse(response.body).dig("result", "alert_email_deliveries").map { |row| row.fetch("id") }
+    expect(ids).to include(delivery.id)
+  end
+
+  it "skips pending/sending AlertEmailDelivery rows on tenant deletion (High #6 regression)" do
+    alert = organization.alerts.create!(stable_id: "alert-1", title: "Alert", alert_score: 80, severity_code: 5)
+    pending_delivery = AlertEmailDelivery.create!(organization:, alert:, membership:, status: "pending")
+
+    post "/api/v1/governance_requests",
+         params: { governance_request: { request_type: "tenant_deletion", parameters: { reason: "customer_request" } } },
+         headers: auth_headers.merge("Idempotency-Key" => "delete-with-deliveries")
+
+    expect(response).to have_http_status(:created)
+    expect(pending_delivery.reload.status).to eq("skipped")
+    expect(JSON.parse(response.body).dig("result", "skipped_alert_email_deliveries")).to eq(1)
+  end
+
   it "disables a source takedown and emits search and graph propagation events" do
     post "/api/v1/governance_requests",
          params: { governance_request: { request_type: "source_takedown", source_id: source.id, parameters: { reason: "contract_expired" } } },

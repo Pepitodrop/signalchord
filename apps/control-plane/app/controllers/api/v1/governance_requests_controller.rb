@@ -2,7 +2,18 @@ module Api
   module V1
     class GovernanceRequestsController < ApplicationController
       before_action -> { require_scope!("api:write") }, only: :create
+      before_action -> { require_role!("owner", "admin") }, only: :create
       before_action :governance_request, only: :show
+
+      # Genuine concurrent double-submit with the same Idempotency-Key can
+      # race past the new_record? check below (both requests see "not found
+      # yet" before either commits). Re-fetch and return the now-committed
+      # record as the idempotent replay would, rather than a raw 500 —
+      # mirrors WatchlistsController's existing rescue.
+      rescue_from ActiveRecord::RecordNotUnique, with: -> {
+        existing = idempotency_key.present? ? current_organization.governance_requests.find_by(idempotency_key:) : nil
+        existing ? (render json: existing, status: :ok) : render_error("conflict", :conflict)
+      }
 
       def index
         render json: current_organization.governance_requests.order(created_at: :desc)
@@ -42,7 +53,12 @@ module Api
         {
           request_type: payload.require(:request_type),
           source_id: payload[:source_id],
-          parameters: payload.permit(parameters: {}).fetch(:parameters, {}).to_h
+          # `.fetch(:parameters, {})` (the prior form) wraps its OWN default
+          # value through Parameters#convert_value_to_parameters, producing
+          # an unpermitted Parameters object whenever `parameters` is absent
+          # from the request — raising UnfilteredParameters on #to_h. `[]`
+          # doesn't have that wrapping behavior for a missing key (just nil).
+          parameters: payload.permit(parameters: {})[:parameters]&.to_h || {}
         }
       end
 
@@ -54,8 +70,14 @@ module Api
         when "tenant_deletion"
           current_organization.sources.update_all(enabled: false, updated_at: Time.current)
           current_organization.alerts.update_all(suppressed: true, review_status: "deletion_pending", updated_at: Time.current)
+          skipped_deliveries = current_organization.alert_email_deliveries.where(status: %w[pending sending])
+                                                    .update_all(status: "skipped", last_error: "tenant_deletion_pending", updated_at: Time.current)
           record.status = "accepted"
-          record.result = { "disabled_sources" => current_organization.sources.count, "suppressed_alerts" => current_organization.alerts.count }
+          record.result = {
+            "disabled_sources" => current_organization.sources.count,
+            "suppressed_alerts" => current_organization.alerts.count,
+            "skipped_alert_email_deliveries" => skipped_deliveries
+          }
         when "source_takedown"
           source = current_organization.sources.find(record.source_id)
           source.update!(enabled: false, rights_status: "denied", policy_metadata: source.policy_metadata.merge("takedown_requested_at" => Time.current.iso8601, "takedown_reason" => record.parameters["reason"].presence || "unspecified"))
@@ -71,6 +93,7 @@ module Api
             watchlist.as_json(except: %i[organization_id]).merge("items" => watchlist.watchlist_items.order(:id).as_json(except: %i[watchlist_id]))
           },
           "alerts" => current_organization.alerts.order(:id).as_json(except: %i[organization_id]),
+          "alert_email_deliveries" => current_organization.alert_email_deliveries.order(:id).as_json(except: %i[organization_id]),
           "policies" => current_organization.policies.order(:id).as_json(except: %i[organization_id]),
           "investigations" => current_organization.investigations.order(:id).as_json(except: %i[organization_id]),
           "generated_at" => Time.current.iso8601

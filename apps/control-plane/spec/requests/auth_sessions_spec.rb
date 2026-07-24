@@ -26,4 +26,23 @@ RSpec.describe "POST /api/v1/auth/session", type: :request do
       expect(JSON.parse(response.body)["scopes"]).to eq(expected_scopes)
     end
   end
+
+  it "runs a real bcrypt comparison even when the email doesn't exist, so timing can't reveal account existence (Blocker #8 regression)" do
+    expect(BCrypt::Password).to receive(:create).with("whatever-password").and_call_original
+
+    post "/api/v1/auth/session",
+         params: { email: "nobody@example.com", password: "whatever-password", organization_slug: organization.slug }
+
+    expect(response).to have_http_status(:unauthorized)
+  end
+
+  it "does not run the dummy bcrypt path for a real account with the wrong password" do
+    Membership.create!(organization:, user:, role: "viewer")
+    expect(BCrypt::Password).not_to receive(:create)
+
+    post "/api/v1/auth/session",
+         params: { email: user.email, password: "wrong-password", organization_slug: organization.slug }
+
+    expect(response).to have_http_status(:unauthorized)
+  end
 end

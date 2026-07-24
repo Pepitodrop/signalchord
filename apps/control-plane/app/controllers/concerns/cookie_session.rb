@@ -21,7 +21,11 @@ module CookieSession
     cookies.encrypted[SESSION_COOKIE_NAME] = {
       value: plaintext,
       httponly: true,
-      secure: Rails.env.production?,
+      # Rails.env.production? and SIGNALCHORD_ENV are two independent
+      # switches (CORS/Origin validation and the internal-token strength
+      # check already key off SIGNALCHORD_ENV) — a deployment that ever sets
+      # them differently would silently ship a non-Secure cookie over HTTPS.
+      secure: ProductionConfig.production_environment?(ENV),
       same_site: :lax,
       expires: 30.days
     }
