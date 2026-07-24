@@ -371,17 +371,196 @@ No critical gaps (no codepath has zero test AND zero error handling AND silent f
 - Parallelization: 7 lanes, 6 parallel / 1 sequential (recovery-drill depends on the rest)
 - Lake Score: 9/9 recommendations chose the complete option
 
+## 24. Final Implementation Plan
+
+This section is the single source of truth for implementation — it supersedes §9/§16/§17/§20's original prose wherever they conflict (those sections remain as the research trail; this one is what to build). Written 2026-07-24, following a second review pass against 17 specific structural requirements plus 2 more design refinements (per-worker poison-message rule, PR packaging).
+
+### 24.1 Blocker/High (fixed in this feature) vs Medium/Low (documented only)
+
+**Blocker/High — fixed here:**
+
+| # | Finding | Severity |
+|---|---|---|
+| 1 | No backup automation (manual-only, can't hit 15-min RPO) | Blocker |
+| 2 | `restore-v1.sh` has no isolation guardrail (can target any namespace, including prod) | Blocker |
+| 3 | Restored environments can send real outbound traffic (SMTP, Expo push — no disable step) | Blocker |
+| 4 | Zero Kafka replay tooling | High |
+| 5 | Poison messages block a partition indefinitely (9 of 10 consumers) | High |
+| 6 | No migration-rollback safeguard against a future destructive migration | High |
+| 7 | `validate_recovery.py` proves nothing operationally (shape-check only) | High |
+| 8 | No backup/restore path exists for a lightweight, no-downtime cadence | High (found during this review) |
+| 9 | Backup/restore has no cluster-context confirmation (wrong-cluster risk) | High (found during outside-voice pass) |
+
+**Medium/Low — documented in TODOS.md, not fixed here** (each would materially expand scope beyond backup/replay/restore):
+- `SIGNALCHORD_ENV=staging` mislabeling of real production (§0 requirement #2 — explicitly does NOT block this feature's recovery work, since the restore-safety guard was deliberately designed to not depend on this label at all; fixing the mislabeling itself has independent production blast radius — own dedicated spec).
+- Cross-cluster backup replication (surviving total cluster/PVC loss).
+- Cluster-level admission-webhook/OPA policy enforcing the restore-target annotation (script-level check + context confirmation is the pragmatic floor for this feature).
+- Full Expo/notification-provider error-code taxonomy beyond the one targeted `DeviceNotRegistered` fix.
+- Remaining 4 unrescued `RecordNotUnique` idempotency sites (pre-existing, from `tenant-security-hardening`, unrelated to this feature).
+- Neo4j's "beyond Kafka retention = permanent loss" characteristic — documented as a residual risk, not solvable without either infinite Kafka retention (impractical) or a dedicated Neo4j backup cadence tighter than the 30-day event log (real infra cost/tradeoff for a future spec if it matters more than currently assessed).
+
+### 24.2 Authoritative vs reconstructable stores (see §1 for full detail)
+
+**Authoritative** (real, permanent data — lost forever if not backed up): PostgreSQL, MinIO (object storage), secrets/config (external dependency for rebuild).
+**Semi-authoritative** (real but only recoverable within a window): Kafka (durable bus, not permanent — recovery only within retention), Neo4j (rebuildable ONLY by replaying `graph.mutation-requested.v1` within that same retention window).
+**Reconstructable derived state** (zero backup needed, full rebuild from source events): OpenSearch.
+**Ephemeral** (proven by code trace, not assumed): Redis/Valkey, Sidekiq job payloads.
+
+### 24.3 Exact backup and restore path — PostgreSQL, MinIO, Neo4j
+
+**Two cadences, not one** (PostgreSQL backup does NOT require downtime — `pg_dump` takes an MVCC-consistent snapshot of a live, concurrently-written database; only MinIO and Neo4j need the app stopped, since neither has a live-consistent snapshot mechanism as currently configured):
+
+```
+EVERY 15 MIN (tight, matches Postgres RPO)     EVERY 24H (matches MinIO/Neo4j's looser RTO)
+[backup-postgres-only.sh]                       [backup.sh — existing, unchanged shape]
+  pg_dump (NO app quiescing, MVCC-safe)           scale app to 0 (quiesce)
+  -> dedicated MinIO bucket                       pg_dump + minio tar + neo4j dump + neo4j-system dump
+  manifest: {postgresql, runtime-config}          -> same dedicated MinIO bucket
+                                                   manifest: {postgresql, minio, neo4j, neo4j-system, runtime-config}
+        |                                                   |
+        v                                                   v
+[restore-v1.sh --postgres-only]                 [restore-v1.sh, full — existing path]
+  Postgres-corruption-only case                    Full disaster-recovery baseline
+        |                                                   |
+        +--------------------> [replay-kafka.sh reconciliation, within 30-day retention] <---+
+                    (bring a restored-from-full-backup Neo4j/MinIO forward to match
+                     a more-recent Postgres state, when the two cadences have drifted)
+```
+
+Both restore paths add, before scaling the app back up: (a) an explicit namespace-annotation check (`signalchord.io/restore-target: allowed` — fails closed if absent, does NOT use `SIGNALCHORD_ENV`/`environment`, which is confirmed mislabeled on real production), (b) a printed `kubectl config current-context` with a required retype-to-confirm step, (c) an outbound-integration-disable step (below).
+
+### 24.4 Outbound-safety controls (traced, not assumed)
+
+Three real outbound channels exist, all traced to actual code — not just "SMTP + generic webhooks" as originally drafted:
+1. **SMTP** (`ApplicationMailer`, `AlertEmailNotificationJob`) — real customer emails.
+2. **Expo push notification API** (`notification-worker/worker.py:16`, `EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"`) — a real third-party service, notifies real devices. Confirmed as the actual delivery path for `ios`/`android`/`expo` platform notification endpoints.
+3. **Webhook platform**: registrable (`NotificationEndpoint::PLATFORMS` includes `"webhook"`) but **not actually implemented** — `notification-worker/worker.py:58-59` explicitly rejects any platform other than `expo`/`ios`/`android` with `raise ValueError(...)`. No customer webhook receives outbound traffic today even if registered. (This also means the "webhook" case is already a naturally-permanent poison-message case for this worker under §24.5's rule — no new code needed to classify it.)
+
+Restore-time fix: null/redirect `SMTP_HOST` to a black-hole sink and set `EXPO_PUSH_URL` to a local black-hole endpoint (e.g., a stub HTTP server in the CI drill returning 200 with no real delivery) in the restored runtime-env, before scaling the app back up.
+
+### 24.5 Kafka replay boundaries, offset handling, duplicate-suppression
+
+- **Boundary**: replay is only possible within each topic's retention window (30 days for standard topics, confirmed in `signalchord-community/templates/init-jobs.yaml`; `source.registered.v1` is compacted/infinite). Beyond that window, replay is impossible — not a tooling gap, a hard boundary of the architecture (§1 caveat).
+- **Tool**: `scripts/single-server/replay-kafka.sh`, a thin wrapper around `kafka-consumer-groups.sh --reset-offsets --to-datetime <ts> --execute`, refusing to run without explicit `--namespace`/`--group`, validating the group name against the 9 known consumer groups, printing before/after offsets, and appending to the recovery evidence report.
+- **Duplicate-suppression guarantee, traced end to end** (§3): a replayed `alert.created.v1` for an already-persisted alert hits `find_or_initialize_by(stable_id:)` in `Internal::V1::AlertsController#create`, finds `created = false`, and skips the entire notification-enqueue block (`enqueue_notification`/`enqueue_email_notifications`) — **zero duplicate customer-visible side effects from alert replay specifically**, by construction. This is the ONE customer-visible side-effect path traced from Kafka ingestion through to email/push. No other Kafka-triggered customer-visible side effect exists in this codebase (verified: no other consumer sends email, push, or webhook traffic — only the alert → notification-worker → Expo path does).
+- **Requirement is proof, not new code** (§13): the recovery-drill CI job replays `alert.created.v1` for an already-processed alert and asserts exactly one alert row + zero duplicate Expo push calls (against a stub Expo endpoint) + zero duplicate email sends (against mailpit/black-hole).
+
+### 24.6 Poison-message behavior — every consumer in scope, individually evaluated
+
+Reference implementation (already correct, preserved as-is): `graph-projector/worker.py:52,252,259,262` — `PermanentMutationError(ValueError)` raised on unprocessable events, published to `DLQ_TOPIC = f"{INPUT_TOPIC}.dlq"`, offset committed; anything else uncaught (crash-loop, correct for transient errors).
+
+**Generalized rule** (mechanical, not 8 separate judgment calls — locked via direct code trace of every worker's actual raise/except sites):
+
+> **`ValueError` and subclasses → permanent (publish to `.dlq`, commit offset). Everything else → transient (propagate uncaught, crash-loop, Kubernetes restarts the pod).**
+
+| Consumer | Current error handling (traced) | Change needed |
+|---|---|---|
+| `graph-projector` | `PermanentMutationError(ValueError)` for bad mutations; else uncaught | **None** — already correct, this IS the reference pattern |
+| `search-projector` | `ValueError("document exceeds search projection limit")` (line 89); else uncaught | Wire into shared helper — already raises the right type |
+| `nlp-pipeline` | 3x `ValueError` for oversized/missing input (lines 74/78/87); else uncaught | Wire into shared helper — already raises the right type |
+| `notification-worker` | `ValueError` for unsupported platform (line 59, already correct — webhook case); `RuntimeError(provider_error)` for Expo API errors (line 66, **ambiguous** — conflates permanent token failures and transient rate-limits) | Wire into shared helper; **targeted fix**: recognize Expo's `DeviceNotRegistered` error and raise `ValueError` for it specifically — everything else stays `RuntimeError` (transient), which is the safe default for an unrecognized provider error |
+| `alert-projector` | Only generic Kafka-transport `RuntimeError(message.error())`; no payload validation exists | Wire into shared helper (no new validation needed — no permanent-error case exists in this worker today, and none is being invented; it correctly has nothing to classify as permanent yet) |
+| `entity-resolution` | Same as alert-projector | Same — wire into shared helper, no new validation |
+| `claim-intelligence` | Same as alert-projector | Same |
+| `graph-analytics` | Same as alert-projector | Same |
+| `velato-engine` | Same Kafka-transport pattern in its consume loop; a separate try/except at startup (policy-file loading) is unrelated to message processing | Same — wire into shared helper, no new validation |
+| Go (`kafkautil.Consume`, all Go consumers) | Any handler error is fatal to the whole claim; no producer parameter exists at all | Extend `Consume`'s signature to accept an optional `(producer, dlqTopic)` pair; classify via a Go error type (e.g. a `PermanentError` wrapper the handler can return) with the same two-tier shape; wire a **new** Kafka producer into `realtime-gateway` specifically (it has none today) |
+
+This is intentionally NOT "add new validation to 4 workers" — it's "give the 4 workers with nothing to classify yet a helper that's ready the moment they do," while the 4 workers that already raise the right exception type just need to route through it.
+
+### 24.7 Migration rollback and forward-fix strategy
+
+- **Current state**: all 9 migrations are additive-only (verified, zero destructive operations exist). `rollback.sh` only rolls back the Helm app-version, never the schema.
+- **Forward-fix policy** (already written in `recovery-matrix.json`, now enforced): "forward-repair only; do not reverse incompatible event contracts or destructive migrations." A destructive migration is fixed by writing a NEW additive migration that repairs forward, not by rolling the schema back.
+- **New enforcement**: `scripts/validate_migration_safety.py` (matching `validate_recovery.py`'s exact argparse/failures-list shape) scans migration files changed in a PR diff for `drop_table`/`remove_column`/`rename_column`/`drop_column`, fails the CI check unless explicitly acknowledged with a comment marker citing the forward-repair policy.
+
+### 24.8 CI tests, integration tests, recovery evidence artifacts
+
+- **CI job `recovery-drill`** (`.github/workflows/ci.yml`, triggered on PRs touching `scripts/single-server/`, `recovery/`, Helm backup/restore templates, plus `workflow_dispatch`): see §24.9 for exact steps.
+- **Unit/integration tests** (per phase, see §24.10).
+- **Recovery evidence artifact**: a versioned JSON/Markdown report per drill run, containing exactly the fields `recovery-matrix.json`'s own `evidence_required` array specifies (restore command log with timestamps, source/restored environment identifiers, image digests + git SHA, RPO/RTO actuals, canary result, tenant isolation validation, operator/approver) — this feature is what first produces a real instance of that schema.
+
+### 24.9 Isolated staging restore exercise — executable steps
+
+1. Spin up a `kind` cluster (same GitHub Action as `helm-disposable-cluster`, but installing the real chart with real small images — actual work, not a dry-run template).
+2. Install `signalchord` + `signalchord-community` releases into a `signalchord` namespace, annotated as a non-production restore target.
+3. Seed representative multi-tenant data (extends `db/seeds.rb`'s pattern to 2+ tenants).
+4. Run the lightweight `backup-postgres-only.sh`. Assert: exit 0, manifest present, **app deployments were never scaled down during the run** (proves the no-downtime claim).
+5. Run the full `backup.sh`. Assert exit 0, manifest/checksum files present.
+6. Create a throwaway `signalchord-restore-drill` namespace, same chart installed fresh/empty, explicitly annotated as an allowed restore target.
+7. Print `kubectl config current-context` and confirm the drill's automated confirmation matches (proves the confirmation step is wired, not bypassed).
+8. Run `restore-v1.sh --namespace signalchord-restore-drill` (negative test first: assert it refuses against an unannotated namespace; positive test: succeeds against the correctly-annotated one). Point `SMTP_HOST`/`EXPO_PUSH_URL` at black-hole stubs before scaling the app up.
+9. Assert schema/migration state: `rails db:migrate:status` shows nothing pending.
+10. Assert tenant row counts and referential integrity match the pre-backup seed.
+11. Assert zero real outbound calls: the SMTP/Expo stub endpoints recorded zero connection attempts.
+12. Run `replay-kafka.sh` against a test topic/group with 3 messages, one intentionally malformed (a payload triggering a `ValueError`-classified failure). Assert: the 2 healthy messages process normally, the malformed one lands on `.dlq` without blocking the others.
+13. Replay `alert.created.v1` for an already-processed alert. Assert exactly one alert row and zero duplicate Expo-push/email calls result (§24.5's guarantee, now proven not just traced).
+14. Assert derived-state rebuild: trigger `search-projector`'s consume path, assert OpenSearch document counts match the restored authoritative records.
+15. Assert the app boots and answers a health check in the restored namespace.
+16. Also restore via the **`--postgres-only` path** separately (Postgres-corruption-only scenario), asserting it succeeds against a manifest containing only `{postgresql, runtime-config}`.
+17. Write the versioned recovery evidence report as a CI artifact.
+
+### 24.10 Implementation phases — files, tests, and PR packaging
+
+**PR1 — Backup automation + restore safety** (Blockers #1/#2/#3/#8/#9):
+- Files: `scripts/single-server/backup-postgres-only.sh` (new), `scripts/single-server/backup.sh` (MinIO bucket destination), `scripts/single-server/restore-v1.sh` (`--postgres-only` path, namespace annotation guard, cluster-context confirmation, outbound-disable for SMTP + Expo), `infrastructure/kubernetes/helm/signalchord/templates/backup-cronjob.yaml` (new, two schedules), `values.yaml`.
+- Tests: shell-script assertions in the (not-yet-existing) `recovery-drill` job are deferred to PR5, but each script gets its own quick unit-style check where feasible (e.g., `test_release_tooling.py`-style contract tests extended to check for the new manifest shape and annotation-guard logic strings).
+
+**PR2 — Kafka replay + migration safety** (High #4/#6):
+- Files: `scripts/single-server/replay-kafka.sh` (new), `scripts/validate_migration_safety.py` (new) + paired test.
+- Tests: `test_validate_migration_safety.py` (matching `validate_recovery.py`'s existing test convention).
+
+**PR3 — Poison-message, Python** (High #5):
+- Files: `services/python_common/poison_message.py` (new, the `ValueError`-classification helper) + `test_poison_message.py`; wire into `graph-projector` (no behavior change, just routes through the shared helper), `search-projector`, `nlp-pipeline`, `notification-worker` (+ the targeted `DeviceNotRegistered` fix), `alert-projector`, `entity-resolution`, `claim-intelligence`, `graph-analytics`, `velato-engine`.
+- Tests: `test_poison_message.py` (classification logic in isolation), plus a per-worker smoke test confirming the shared helper is actually wired in (not a full Kafka integration test per worker — that's PR5's job).
+
+**PR4 — Poison-message, Go**:
+- Files: `services/internal/kafkautil/consumer.go` (extended `Consume` signature), `services/realtime-gateway/main.go` (new producer wiring).
+- Tests: Go unit test for the classification/DLQ-publish logic in `kafkautil`.
+
+**PR5 — Recovery-drill CI job** (depends on PR1-4 all merged):
+- Files: `.github/workflows/ci.yml`.
+- Tests: the entire §24.9 exercise IS the test — this PR's job is standing up the drill itself.
+
+**Cross-cutting, any PR touching it**: `recovery/recovery-matrix.json` (update `external_blockers` as items get proven), `TODOS.md` (already has the `SIGNALCHORD_ENV` entry from this review).
+
+### 24.11 Risks
+
+- **RPO-vs-availability tradeoff resolved, but the full-quiesce cadence still means real (if infrequent, e.g. daily) downtime** — needs explicit sign-off on the actual cadence number, not just the two-tier design.
+- **Cluster-context confirmation is a human-attention control, not a code guarantee** — an operator can still retype the wrong context by mistake. Documented as a residual risk (§NOT in scope: the fully airtight version is a cluster-level admission policy).
+- **Neo4j beyond Kafka retention is unrecoverable** — a structural limitation of the architecture, not a bug this feature introduces or can fully close.
+- **Notification-worker's Expo error classification only handles one known-permanent code** — an unrecognized future Expo error stays classified transient (safe default: crash-loop-retry, not silently dropped), but isn't a complete provider taxonomy.
+- **PR3 (poison-message Python) is the largest single PR** — a shared helper plus 9 worker wire-ups; splitting further would mean shipping a helper nothing uses yet, which is worse for reviewability, not better.
+
+### 24.12 Acceptance criteria
+
+1. A scheduled CronJob produces a real Postgres backup at least every 15 minutes with zero app downtime, landing in a dedicated MinIO bucket.
+2. A scheduled full backup (Postgres + MinIO + Neo4j) runs on a longer, explicitly-agreed cadence.
+3. `restore-v1.sh` (both full and `--postgres-only` paths) refuses to run against a namespace lacking the explicit restore-target annotation, and requires a retyped cluster-context confirmation.
+4. A restored environment attempts zero real SMTP or Expo push calls (asserted against stub endpoints in the CI drill).
+5. `replay-kafka.sh` resets a named consumer group's offsets to a controlled point and logs the before/after state to the recovery evidence report.
+6. All 10 Kafka consumers isolate a `ValueError`-classified poison message to its `.dlq` topic instead of blocking the partition, verified per-consumer.
+7. Replaying `alert.created.v1` for an already-processed alert produces exactly one alert row and zero duplicate Expo-push/email sends.
+8. A CI check fails a PR introducing a destructive migration pattern without explicit acknowledgment.
+9. The `recovery-drill` CI job runs the full §24.9 sequence end to end and produces a versioned recovery evidence report matching `recovery-matrix.json`'s schema.
+10. No existing test regresses.
+11. `recovery-matrix.json`'s `external_blockers` is updated to remove items this feature actually proves.
+
+### 24.13 Recommended command to begin Phase 1 (PR1)
+
+`/plan-eng-review` has now run twice on this spec (initial + this finalization pass) with 0 unresolved decisions. Next: implement PR1 directly — no further planning skill needed before code. Suggested kickoff: "Approved. Implement PR1 (backup automation + restore safety) exactly as specified in §24.10, following the phased approach, committing after each completed piece, running relevant tests continuously."
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 0 | — | not run |
 | Codex Review | `/codex review` | Independent 2nd opinion | 0 | — | not run (401, Claude subagent substituted) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 1 | CLEAR | 9 issues, 0 critical gaps |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 2 | CLEAR | 11 issues, 0 critical gaps |
 | Design Review | `/plan-design-review` | UI/UX gaps | 0 | — | not run (backend/infra-only feature) |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | not run |
 
-**CROSS-MODEL:** 3 substantive tensions surfaced (backup/restore path mismatch, cluster-context blind spot, poison-message extraction effort) — all resolved with the user, folded into §22/§23. The outside voice's broader "split into 5 PRs" scope verdict was considered and explicitly not adopted (Step 0's decision stands: proceed as one feature).
-**VERDICT:** ENG CLEARED — ready to implement.
+**CROSS-MODEL:** Pass 1 surfaced 3 substantive tensions (backup/restore path mismatch, cluster-context blind spot, poison-message extraction effort) — all resolved, folded into §22/§23. The outside voice's broader "split into 5 PRs" scope verdict was reconsidered in this pass 2 finalization: **partially adopted as PR packaging** (§24.10, 5 sequential PRs off this one branch/feature) without reopening the underlying scope decision (all 7 phases stay in scope, Step 0's "proceed as scoped" still stands — this is about reviewability of delivery, not what gets built).
+**VERDICT:** ENG CLEARED — ready to implement. §24 is the authoritative implementation plan.
 
 NO UNRESOLVED DECISIONS
