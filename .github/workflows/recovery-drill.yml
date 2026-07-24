@@ -816,6 +816,10 @@ jobs:
               kubectl -n "$ns" get pods --no-headers 2>/dev/null | awk '{print $1}' | while IFS= read -r pod; do
                 echo "--- describe $ns/$pod ---"
                 kubectl -n "$ns" describe pod "$pod"
+                echo "--- logs $ns/$pod (current) ---"
+                kubectl -n "$ns" logs "$pod" --all-containers --tail=200
+                echo "--- logs $ns/$pod (previous, if crashed) ---"
+                kubectl -n "$ns" logs "$pod" --all-containers --previous --tail=200
               done
             done
             echo "== host resources =="
