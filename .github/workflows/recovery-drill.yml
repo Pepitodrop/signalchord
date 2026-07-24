@@ -791,6 +791,39 @@ jobs:
               json.dump(section, handle)
           PY
 
+      - name: Capture cluster diagnostics on failure
+        if: failure()
+        env:
+          NAMESPACE: ${{ steps.ids.outputs.namespace }}
+          RESTORE_NAMESPACE: ${{ steps.ids.outputs.restore_namespace }}
+        run: |
+          set +e
+          {
+            echo "== nodes =="
+            kubectl get nodes -o wide
+            echo "== storageclasses =="
+            kubectl get storageclass
+            echo "== pvcs (all namespaces) =="
+            kubectl get pvc -A -o wide
+            echo "== pods (all namespaces) =="
+            kubectl get pods -A -o wide
+            echo "== events: $NAMESPACE =="
+            kubectl -n "$NAMESPACE" get events --sort-by=.lastTimestamp
+            echo "== events: $RESTORE_NAMESPACE =="
+            kubectl -n "$RESTORE_NAMESPACE" get events --sort-by=.lastTimestamp
+            for ns in "$NAMESPACE" "$RESTORE_NAMESPACE"; do
+              echo "== describe pods: $ns =="
+              kubectl -n "$ns" get pods --no-headers 2>/dev/null | awk '{print $1}' | while IFS= read -r pod; do
+                echo "--- describe $ns/$pod ---"
+                kubectl -n "$ns" describe pod "$pod"
+              done
+            done
+            echo "== host resources =="
+            free -h
+            df -h
+          } > "$RUNNER_TEMP/logs/cluster-diagnostics.log" 2>&1
+          cat "$RUNNER_TEMP/logs/cluster-diagnostics.log"
+
       - name: Cleanup
         if: always()
         env:
