@@ -29,6 +29,8 @@ The repository contains:
 - `infrastructure/kubernetes/helm/signalchord/templates/backup-cronjob.yaml` for scheduled, in-cluster automation of both backup cadences;
 - `scripts/single-server/acceptance.sh` for a live permitted-feed article-to-alert canary;
 - `scripts/single-server/update.sh` and `rollback.sh` for immutable upgrades and Helm revision rollback;
+- `scripts/single-server/replay-kafka.sh`, a thin safety wrapper around `kafka-consumer-groups.sh --reset-offsets`, for controlled consumer-group offset replay within a topic's retention window;
+- `scripts/validate_migration_safety.py`, a CI check that fails a pull request introducing a destructive Rails migration pattern without an explicit forward-repair acknowledgment;
 - dedicated CI that lints and renders both charts, validates restricted admission, checks the operations scripts and audits complete repository history.
 
 Internal dependency transport is plaintext inside the single-node cluster. The profile therefore remains `staging`, not a general multi-operator production profile.
@@ -153,6 +155,22 @@ sh scripts/single-server/restore.sh \
 ```
 
 The stable `restore.sh` entrypoint dispatches to the versioned format implementation. It verifies every checksum, required artifact, authoritative data-set declaration, quiesced-snapshot marker (skipped for `--postgres-only` backups, which are never quiesced) and runtime-file permission before changing the cluster. It also requires the operator (or an automated drill) to retype the exact `kubectl config current-context` value as `--confirm-context`, refusing to proceed on any mismatch. Before the application is scaled back up, it overrides `SMTP_HOST` and `EXPO_PUSH_URL` in the restored runtime Secret to the supplied black-hole values so a restored environment cannot send real customer email or push notifications. Add `--postgres-only` to restore from a `backup-postgres-only.sh` snapshot (PostgreSQL-corruption-only scenario; requires a manifest containing only `{postgresql, runtime-config}`). On failure, application deployments remain stopped for inspection. After success, run the strong acceptance canary and verify that Kafka/OpenSearch projections rebuild from authoritative data.
+
+## Kafka replay
+
+`scripts/single-server/replay-kafka.sh` is a thin safety wrapper around Kafka's own `kafka-consumer-groups.sh --reset-offsets` — it does not implement a replay engine. There is no default `--namespace` or `--group`: both are always required, and the target group must be one of the 9 known SignalChord consumer groups unless `--force` is passed (for a throwaway test/drill group, for example).
+
+```bash
+sh scripts/single-server/replay-kafka.sh \
+  --namespace signalchord \
+  --group signalchord-alert-projector-v1 \
+  --topic alert.created.v1 \
+  --to-datetime 2026-07-24T00:00:00.000 \
+  --evidence-report ~/recovery-evidence.jsonl \
+  --yes
+```
+
+It prints the group's current offsets, shows the proposed reset with `--dry-run`, then (only because `--yes` was supplied) applies it with `--execute` and prints the resulting offsets. Replay only works within a topic's retention window (30 days for standard topics; `source.registered.v1` is compacted/infinite) — beyond that window Kafka resets to the earliest still-retained offset instead of the requested time, and no flag here can change that. If `--evidence-report` is given, one JSON-Lines record is appended per invocation; the file is only ever opened for appending, so pre-existing evidence is never rewritten or truncated.
 
 ## Updates and rollback
 

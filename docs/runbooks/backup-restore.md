@@ -14,7 +14,7 @@ Use this runbook for planned restore drills and emergency recovery. Do not run p
 ## PostgreSQL
 
 1. Restore the selected managed backup into an isolated database instance.
-2. Apply reviewed migrations forward only.
+2. Apply reviewed migrations forward only — `scripts/validate_migration_safety.py` fails CI on any `drop_table`/`remove_column`/`drop_column`/`rename_column` pattern in a changed migration unless it carries an explicit forward-repair acknowledgment comment.
 3. Run `bin/rails db:migrate:status`, Rails request specs, and the synthetic canary against the restored control plane.
 4. Reconcile tenant, source, watchlist, policy, alert, outbox, and notification-delivery counts against the incident window.
 5. Record actual RPO/RTO and any missing outbox events.
@@ -23,7 +23,7 @@ Use this runbook for planned restore drills and emergency recovery. Do not run p
 
 1. Record topic configs, partition counts, consumer group offsets, DLQ counts, and schema registry versions.
 2. Restore or mirror topics according to the provider procedure.
-3. Replay through a dedicated replay group with notification side effects disabled or ledgered.
+3. Replay with `scripts/single-server/replay-kafka.sh --namespace ... --group ... --topic ... --to-datetime ... --evidence-report ... --yes` — it refuses an unrecognized consumer group without `--force`, shows current offsets, dry-runs the reset, then executes and shows offsets again, appending one evidence record per run. Replay only reaches back to the topic's retention boundary (30 days for standard topics).
 4. Verify duplicate delivery does not create duplicate graph facts, alerts, or notification deliveries.
 5. Resume live consumers only after lag, DLQ rate, and reconciliation are within the approved threshold.
 
