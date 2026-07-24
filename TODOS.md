@@ -99,3 +99,17 @@
 **Effort:** S
 **Priority:** P4
 **Depends on:** None
+
+## Recovery and Replay Hardening
+
+### SIGNALCHORD_ENV mislabeled "staging" on the real production deployment
+
+**What:** `infrastructure/kubernetes/helm/signalchord/values-single-server.yaml` sets `global.environment: staging`, which becomes `SIGNALCHORD_ENV=staging` on every pod (`deployments.yaml:60`, `feed-collector-cronjob.yaml:36`, `migration-job.yaml:36`). `scripts/single-server/install.sh:79` confirms this is the values file the real production install actually uses — meaning the live closed-beta production deployment currently runs with `SIGNALCHORD_ENV=staging`.
+
+**Why:** Every `ProductionConfig.production_environment?(env)`-gated check (`env["SIGNALCHORD_ENV"] == "production"`) silently evaluates false in real production today. That includes the cookie `Secure` flag fix from `tenant-security-hardening` (Blocker #8's env-check drift fix) and the pre-existing boot-time `ProductionConfig.validate!` checks (`FORCE_SSL`, Kafka TLS/SASL requirements, `DATABASE_URL` sslmode, secret-strength minimums, beta-access-code strength). None of this hardening is actually being enforced in the live deployment.
+
+**Context:** Found while designing `recovery-and-replay-hardening`'s restore-safety guard (2026-07-24) — deliberately designed to NOT rely on this label, given it's proven unreliable. Not fixed here: flipping `global.environment` to `production` for the real deployment could immediately fail `FORCE_SSL`/Kafka-TLS/secret-strength requirements the running deployment may not yet satisfy — genuine production blast radius. Needs its own dedicated spec: audit which of `ProductionConfig.validate!`'s requirements the current deployment actually meets before flipping the label, likely with a staged rollout (e.g., relax individual checks temporarily, fix each gap, then require them).
+
+**Effort:** M
+**Priority:** P1
+**Depends on:** None
