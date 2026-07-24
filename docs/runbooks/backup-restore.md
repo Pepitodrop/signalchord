@@ -8,6 +8,7 @@ Use this runbook for planned restore drills and emergency recovery. Do not run p
 - Preserve logs, DLQ records, offsets, object versions, database snapshots, and current image digests.
 - Pause harmful side effects: notification workers, source adapters, affected consumers, replay jobs, or webhooks.
 - Verify the restore target is isolated from production customers and providers.
+- Annotate the target namespace `signalchord.io/restore-target: allowed` — `restore-v1.sh` refuses to run against any namespace missing this exact annotation, and separately requires retyping the active `kubectl config current-context` via `--confirm-context`.
 - Record operator, approver, source environment, restore environment, git SHA, image digests, start time, target RPO, and target RTO.
 
 ## PostgreSQL

@@ -294,6 +294,36 @@ migrationJob:
   image: signalchord-control-plane
   command: [bin/rails, db:prepare]
 
+# Two cadences: a no-downtime PostgreSQL-only snapshot tight enough to hit the
+# 15-minute recovery-point objective, plus the existing full quiesce-everything
+# backup on a much longer cadence matching MinIO/Neo4j's looser RTO. Both
+# mirror to a dedicated destination bucket via backup.destinationSecretName
+# (MINIO_ACCESS_KEY/MINIO_SECRET_KEY), provisioned outside this chart.
+backup:
+  enabled: true
+  image: signalchord-backup-tools
+  # Public age recipient used to encrypt the runtime-config snapshot; not secret.
+  ageRecipient: ""
+  destinationSecretName: signalchord-backup-destination
+  postgresOnly:
+    schedule: "*/15 * * * *"
+    minioBucket: signalchord-backups-postgres-only
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 2
+    failedJobsHistoryLimit: 3
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: 500m, memory: 512Mi}
+  full:
+    schedule: "0 3 * * *"
+    minioBucket: signalchord-backups-full
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 2
+    failedJobsHistoryLimit: 2
+    resources:
+      requests: {cpu: 200m, memory: 256Mi}
+      limits: {cpu: "1", memory: 1Gi}
+
 networkPolicy:
   enabled: true
   dnsNamespace: kube-system

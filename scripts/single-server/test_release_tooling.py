@@ -7,10 +7,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BACKUP = ROOT / "scripts/single-server/backup.sh"
+BACKUP_POSTGRES_ONLY = ROOT / "scripts/single-server/backup-postgres-only.sh"
 RESTORE = ROOT / "scripts/single-server/restore.sh"
 RESTORE_IMPL = ROOT / "scripts/single-server/restore-v1.sh"
 ACCEPTANCE = ROOT / "scripts/single-server/acceptance.sh"
-SCRIPTS = [BACKUP, RESTORE, RESTORE_IMPL, ACCEPTANCE]
+SCRIPTS = [BACKUP, BACKUP_POSTGRES_ONLY, RESTORE, RESTORE_IMPL, ACCEPTANCE]
 
 
 class ReleaseToolingTest(unittest.TestCase):
@@ -28,8 +29,36 @@ class ReleaseToolingTest(unittest.TestCase):
             "minio.tar",
             "application_quiesced",
             "SHA256SUMS",
+            "mc alias set",
+            "mc mirror",
+            "--dest-minio-bucket",
+            "--dest-minio-access-key-file",
+            "--dest-minio-secret-key-file",
         ):
             self.assertIn(marker, text)
+        # The full backup's context probe must not be fatal when run from an
+        # in-cluster CronJob ServiceAccount (no kubeconfig, no current-context).
+        self.assertIn("kubectl config current-context 2>/dev/null || echo in-cluster", text)
+
+    def test_backup_postgres_only_contract(self) -> None:
+        text = BACKUP_POSTGRES_ONLY.read_text(encoding="utf-8")
+        for marker in (
+            "pg_dump",
+            "runtime.env.age",
+            "SHA256SUMS",
+            "mc alias set",
+            "mc mirror",
+            "signalchord-single-server-backup-postgres-only",
+            '"application_quiesced": False',
+            "--minio-bucket",
+            "--minio-access-key-file",
+            "--minio-secret-key-file",
+        ):
+            self.assertIn(marker, text)
+        # This cadence is defined by never touching application replicas or
+        # the feed-collector cronjob: assert those calls are simply absent.
+        for forbidden in ("scale deployments", "scale statefulset", "patch cronjob signalchord-feed-collector"):
+            self.assertNotIn(forbidden, text)
 
     def test_restore_contract(self) -> None:
         wrapper = RESTORE.read_text(encoding="utf-8")
@@ -44,6 +73,17 @@ class ReleaseToolingTest(unittest.TestCase):
             "data-minio-0",
             "application_quiesced",
             "--yes",
+            "--postgres-only",
+            "signalchord.io/restore-target",
+            "restore_target",
+            "!= allowed",
+            "--confirm-context",
+            "current_context",
+            "--smtp-blackhole-host",
+            "--expo-blackhole-url",
+            "SMTP_HOST=",
+            "EXPO_PUSH_URL=",
+            "signalchord-single-server-backup-postgres-only",
         ):
             self.assertIn(marker, text)
 

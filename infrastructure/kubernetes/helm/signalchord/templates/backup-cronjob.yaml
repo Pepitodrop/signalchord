@@ -1,0 +1,231 @@
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "signalchord.workloadServiceAccountName" (dict "root" . "name" "backup") }}
+  labels:
+    app.kubernetes.io/name: backup
+    app.kubernetes.io/part-of: signalchord
+  {{- with (index .Values.serviceAccount.workloadAnnotations "backup") }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: signalchord-backup
+  labels:
+    app.kubernetes.io/name: backup
+    app.kubernetes.io/part-of: signalchord
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets", "deployments"]
+    verbs: ["get", "list", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets/scale", "deployments/scale"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "patch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: signalchord-backup
+  labels:
+    app.kubernetes.io/name: backup
+    app.kubernetes.io/part-of: signalchord
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "signalchord.workloadServiceAccountName" (dict "root" . "name" "backup") }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: signalchord-backup
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: signalchord-backup-postgres-only
+  labels:
+    app.kubernetes.io/name: backup-postgres-only
+    app.kubernetes.io/part-of: signalchord
+spec:
+  schedule: {{ .Values.backup.postgresOnly.schedule | quote }}
+  concurrencyPolicy: {{ .Values.backup.postgresOnly.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.backup.postgresOnly.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.postgresOnly.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: backup-postgres-only
+            app.kubernetes.io/part-of: signalchord
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "signalchord.workloadServiceAccountName" (dict "root" . "name" "backup") }}
+          # Unlike every other workload in this chart, this pod genuinely needs
+          # the Kubernetes API (kubectl exec into postgres, no scaling calls
+          # for this no-downtime cadence).
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: backup-postgres-only
+              image: {{ include "signalchord.imageReference" (dict "root" . "image" .Values.backup.image) | quote }}
+              imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+              workingDir: /workspace
+              command: [sh, -c]
+              args:
+                - |
+                  set -eu
+                  umask 077
+                  runtime_env=$(mktemp)
+                  : > "$runtime_env"
+                  for f in /var/run/secrets/signalchord-runtime/*; do
+                    [ -f "$f" ] || continue
+                    printf '%s=%s\n' "$(basename "$f")" "$(cat "$f")" >> "$runtime_env"
+                  done
+                  chmod 600 "$runtime_env"
+                  exec sh scripts/single-server/backup-postgres-only.sh \
+                    --namespace {{ .Release.Namespace }} \
+                    --runtime-env "$runtime_env" \
+                    --age-recipient "$BACKUP_AGE_RECIPIENT" \
+                    --minio-endpoint {{ .Values.global.config.minioEndpoint | quote }} \
+                    --minio-bucket {{ .Values.backup.postgresOnly.minioBucket | quote }} \
+                    --minio-access-key-file /var/run/secrets/backup-destination/MINIO_ACCESS_KEY \
+                    --minio-secret-key-file /var/run/secrets/backup-destination/MINIO_SECRET_KEY \
+                    {{- if ne .Values.global.config.minioSecure "true" }}
+                    --minio-insecure \
+                    {{- end }}
+                    --yes
+              env:
+                - {name: TMPDIR, value: /tmp}
+                - {name: HOME, value: /tmp}
+                - {name: BACKUP_AGE_RECIPIENT, value: {{ .Values.backup.ageRecipient | quote }}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                runAsNonRoot: true
+                runAsUser: 10001
+                runAsGroup: 10001
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: runtime-secret, mountPath: /var/run/secrets/signalchord-runtime, readOnly: true}
+                - {name: backup-destination, mountPath: /var/run/secrets/backup-destination, readOnly: true}
+              resources:
+                {{- toYaml .Values.backup.postgresOnly.resources | nindent 16 }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: runtime-secret
+              secret: {secretName: {{ .Values.global.existingSecret }}}
+            - name: backup-destination
+              secret: {secretName: {{ .Values.backup.destinationSecretName }}}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: signalchord-backup-full
+  labels:
+    app.kubernetes.io/name: backup-full
+    app.kubernetes.io/part-of: signalchord
+spec:
+  schedule: {{ .Values.backup.full.schedule | quote }}
+  concurrencyPolicy: {{ .Values.backup.full.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.backup.full.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.full.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: backup-full
+            app.kubernetes.io/part-of: signalchord
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "signalchord.workloadServiceAccountName" (dict "root" . "name" "backup") }}
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: backup-full
+              image: {{ include "signalchord.imageReference" (dict "root" . "image" .Values.backup.image) | quote }}
+              imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+              workingDir: /workspace
+              command: [sh, -c]
+              args:
+                - |
+                  set -eu
+                  umask 077
+                  runtime_env=$(mktemp)
+                  : > "$runtime_env"
+                  for f in /var/run/secrets/signalchord-runtime/*; do
+                    [ -f "$f" ] || continue
+                    printf '%s=%s\n' "$(basename "$f")" "$(cat "$f")" >> "$runtime_env"
+                  done
+                  chmod 600 "$runtime_env"
+                  exec sh scripts/single-server/backup.sh \
+                    --namespace {{ .Release.Namespace }} \
+                    --output "$(mktemp -d)/signalchord-backup" \
+                    --runtime-env "$runtime_env" \
+                    --age-recipient "$BACKUP_AGE_RECIPIENT" \
+                    --dest-minio-endpoint {{ .Values.global.config.minioEndpoint | quote }} \
+                    --dest-minio-bucket {{ .Values.backup.full.minioBucket | quote }} \
+                    --dest-minio-access-key-file /var/run/secrets/backup-destination/MINIO_ACCESS_KEY \
+                    --dest-minio-secret-key-file /var/run/secrets/backup-destination/MINIO_SECRET_KEY \
+                    {{- if ne .Values.global.config.minioSecure "true" }}
+                    --dest-minio-insecure \
+                    {{- end }}
+                    --yes
+              env:
+                - {name: TMPDIR, value: /tmp}
+                - {name: HOME, value: /tmp}
+                - {name: BACKUP_AGE_RECIPIENT, value: {{ .Values.backup.ageRecipient | quote }}}
+              securityContext:
+                allowPrivilegeEscalation: false
+                privileged: false
+                runAsNonRoot: true
+                runAsUser: 10001
+                runAsGroup: 10001
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: tmp, mountPath: /tmp}
+                - {name: runtime-secret, mountPath: /var/run/secrets/signalchord-runtime, readOnly: true}
+                - {name: backup-destination, mountPath: /var/run/secrets/backup-destination, readOnly: true}
+              resources:
+                {{- toYaml .Values.backup.full.resources | nindent 16 }}
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: runtime-secret
+              secret: {secretName: {{ .Values.global.existingSecret }}}
+            - name: backup-destination
+              secret: {secretName: {{ .Values.backup.destinationSecretName }}}
+{{- end }}

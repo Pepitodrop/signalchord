@@ -15,9 +15,18 @@ DEPLOYMENT_REPLICAS=
 FEED_COLLECTOR_SUSPEND=
 APPLICATION_QUIESCED=false
 STAGING=
+DEST_MINIO_ENDPOINT=
+DEST_MINIO_SECURE=true
+DEST_MINIO_BUCKET=
+DEST_MINIO_ALIAS=signalchord-backup-dest
+DEST_MINIO_ACCESS_KEY_FILE=
+DEST_MINIO_SECRET_KEY_FILE=
 
 usage() {
-  echo "usage: $0 --output DIR --runtime-env FILE --age-recipient RECIPIENT [--namespace NAME] --yes" >&2
+  echo "usage: $0 --output DIR --runtime-env FILE --age-recipient RECIPIENT \\
+       --dest-minio-endpoint HOST:PORT --dest-minio-bucket NAME \\
+       --dest-minio-access-key-file FILE --dest-minio-secret-key-file FILE \\
+       [--dest-minio-insecure] [--namespace NAME] --yes" >&2
 }
 
 restore_application() {
@@ -65,20 +74,30 @@ while [ "$#" -gt 0 ]; do
     --runtime-env) RUNTIME_ENV=$2; shift 2 ;;
     --age-recipient) AGE_RECIPIENT=$2; shift 2 ;;
     --namespace) NAMESPACE=$2; shift 2 ;;
+    --dest-minio-endpoint) DEST_MINIO_ENDPOINT=$2; shift 2 ;;
+    --dest-minio-bucket) DEST_MINIO_BUCKET=$2; shift 2 ;;
+    --dest-minio-alias) DEST_MINIO_ALIAS=$2; shift 2 ;;
+    --dest-minio-access-key-file) DEST_MINIO_ACCESS_KEY_FILE=$2; shift 2 ;;
+    --dest-minio-secret-key-file) DEST_MINIO_SECRET_KEY_FILE=$2; shift 2 ;;
+    --dest-minio-insecure) DEST_MINIO_SECURE=false; shift ;;
     --yes) CONFIRM=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) usage; exit 2 ;;
   esac
 done
 
-if [ -z "$OUTPUT" ] || [ -z "$RUNTIME_ENV" ] || [ -z "$AGE_RECIPIENT" ] || [ "$CONFIRM" != true ]; then
+if [ -z "$OUTPUT" ] || [ -z "$RUNTIME_ENV" ] || [ -z "$AGE_RECIPIENT" ] || [ "$CONFIRM" != true ] \
+  || [ -z "$DEST_MINIO_ENDPOINT" ] || [ -z "$DEST_MINIO_BUCKET" ] \
+  || [ -z "$DEST_MINIO_ACCESS_KEY_FILE" ] || [ -z "$DEST_MINIO_SECRET_KEY_FILE" ]; then
   usage
   exit 2
 fi
 [ -f "$RUNTIME_ENV" ] || { echo "runtime env file not found: $RUNTIME_ENV" >&2; exit 1; }
 [ ! -e "$OUTPUT" ] || { echo "backup output already exists: $OUTPUT" >&2; exit 1; }
+[ -f "$DEST_MINIO_ACCESS_KEY_FILE" ] || { echo "dest minio access key file not found: $DEST_MINIO_ACCESS_KEY_FILE" >&2; exit 1; }
+[ -f "$DEST_MINIO_SECRET_KEY_FILE" ] || { echo "dest minio secret key file not found: $DEST_MINIO_SECRET_KEY_FILE" >&2; exit 1; }
 
-for tool in kubectl helm age python3 sha256sum tar; do
+for tool in kubectl helm age python3 sha256sum tar mc; do
   command -v "$tool" >/dev/null 2>&1 || { echo "$tool is required" >&2; exit 1; }
 done
 runtime_mode=$(stat -c '%a' "$RUNTIME_ENV" 2>/dev/null || stat -f '%Lp' "$RUNTIME_ENV")
@@ -91,7 +110,10 @@ helm -n "$NAMESPACE" status signalchord-community >/dev/null
 STAGING=$(mktemp -d "${TMPDIR:-/tmp}/signalchord-backup.XXXXXX")
 mkdir -p "$STAGING/metadata" "$STAGING/data"
 created_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-context=$(kubectl config current-context)
+created_at_path=$(date -u '+%Y-%m-%dT%H-%M-%SZ')
+# kubectl config current-context has no meaning for an in-cluster CronJob
+# ServiceAccount token (no kubeconfig is present), so this must not be fatal.
+context=$(kubectl config current-context 2>/dev/null || echo in-cluster)
 
 helm -n "$NAMESPACE" get values signalchord --all -o yaml > "$STAGING/metadata/signalchord-values.yaml"
 helm -n "$NAMESPACE" get values signalchord-community --all -o yaml > "$STAGING/metadata/community-values.yaml"
@@ -252,5 +274,14 @@ mkdir -p "$(dirname "$OUTPUT")"
 mv "$STAGING" "$OUTPUT"
 STAGING=
 chmod -R go-rwx "$OUTPUT"
+
+dest_minio_scheme=https
+[ "$DEST_MINIO_SECURE" = true ] || dest_minio_scheme=http
+mc alias set "$DEST_MINIO_ALIAS" "$dest_minio_scheme://$DEST_MINIO_ENDPOINT" \
+  "$(cat "$DEST_MINIO_ACCESS_KEY_FILE")" "$(cat "$DEST_MINIO_SECRET_KEY_FILE")" >/dev/null
+mc mb --ignore-existing "$DEST_MINIO_ALIAS/$DEST_MINIO_BUCKET" >/dev/null
+mc mirror --quiet "$OUTPUT" "$DEST_MINIO_ALIAS/$DEST_MINIO_BUCKET/$created_at_path" >/dev/null
+
 echo "SignalChord backup completed: $OUTPUT"
+echo "Backup mirrored to: $DEST_MINIO_ALIAS/$DEST_MINIO_BUCKET/$created_at_path"
 echo "Test restoration before relying on this backup. Kafka, OpenSearch and Valkey are rebuilt from authoritative data."
