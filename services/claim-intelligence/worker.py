@@ -7,11 +7,14 @@ import uuid
 from datetime import UTC, datetime
 
 from confluent_kafka import Consumer, Producer
-
 from engine import cluster_claim
+
+from python_common.poison_message import handle_message
 from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
+INPUT_TOPIC = "claim.extracted.v1"
+DLQ_TOPIC = f"{INPUT_TOPIC}.dlq"
 
 
 def envelope(source: dict, event_type: str, key: str, payload: dict, stage: str) -> dict:
@@ -33,10 +36,14 @@ def envelope(source: dict, event_type: str, key: str, payload: dict, stage: str)
 
 
 def publish(producer: Producer, topic: str, key: str, event: dict) -> None:
-    producer.produce(topic, key=key.encode(), value=json.dumps(event, separators=(",", ":")).encode())
+    producer.produce(
+        topic, key=key.encode(), value=json.dumps(event, separators=(",", ":")).encode()
+    )
 
 
-def graph_mutations(source: dict, payload: dict, cluster_id: str, normalized: str) -> list[tuple[str, dict]]:
+def graph_mutations(
+    source: dict, payload: dict, cluster_id: str, normalized: str
+) -> list[tuple[str, dict]]:
     claim_id = payload["claim_id"]
     document_id = payload["document_id"]
     article_id = f"article:{document_id}"
@@ -105,6 +112,51 @@ def graph_mutations(source: dict, payload: dict, cluster_id: str, normalized: st
     ]
 
 
+def handle_one_message(message, consumer: Consumer, producer: Producer) -> None:
+    def process() -> None:
+        source = json.loads(message.value())
+        payload = source["payload"]
+        clustered = cluster_claim(payload["proposition"])
+        clustered_payload = payload | {
+            "cluster_id": clustered.cluster_id,
+            "normalized_proposition": clustered.normalized_proposition,
+            "stance": clustered.stance,
+        }
+        publish(
+            producer,
+            "claim.clustered.v1",
+            clustered.cluster_id,
+            envelope(
+                source,
+                "claim.clustered.v1",
+                clustered.cluster_id,
+                clustered_payload,
+                "claim-clustering",
+            ),
+        )
+        for key, mutation in graph_mutations(
+            source, payload, clustered.cluster_id, clustered.normalized_proposition
+        ):
+            publish(
+                producer,
+                "graph.mutation-requested.v1",
+                key,
+                envelope(
+                    source, "graph.mutation-requested.v1", key, mutation, "graph-mutation-build"
+                ),
+            )
+        producer.flush(10)
+
+    handle_message(
+        consumer=consumer,
+        message=message,
+        producer=producer,
+        dlq_topic=DLQ_TOPIC,
+        process=process,
+        origin="claim-intelligence",
+    )
+
+
 def main() -> None:
     validate_production_config(["kafka"])
     running = True
@@ -125,7 +177,7 @@ def main() -> None:
         )
     )
     producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
-    consumer.subscribe(["claim.extracted.v1"])
+    consumer.subscribe([INPUT_TOPIC])
     try:
         while running:
             message = consumer.poll(1.0)
@@ -133,31 +185,10 @@ def main() -> None:
                 continue
             if message.error():
                 raise RuntimeError(message.error())
-            source = json.loads(message.value())
-            payload = source["payload"]
-            clustered = cluster_claim(payload["proposition"])
-            clustered_payload = payload | {
-                "cluster_id": clustered.cluster_id,
-                "normalized_proposition": clustered.normalized_proposition,
-                "stance": clustered.stance,
-            }
-            publish(
-                producer,
-                "claim.clustered.v1",
-                clustered.cluster_id,
-                envelope(source, "claim.clustered.v1", clustered.cluster_id, clustered_payload, "claim-clustering"),
-            )
-            for key, mutation in graph_mutations(source, payload, clustered.cluster_id, clustered.normalized_proposition):
-                publish(
-                    producer,
-                    "graph.mutation-requested.v1",
-                    key,
-                    envelope(source, "graph.mutation-requested.v1", key, mutation, "graph-mutation-build"),
-                )
-            producer.flush(10)
-            consumer.commit(message=message, asynchronous=False)
+            handle_one_message(message, consumer, producer)
     finally:
         consumer.close()
+        producer.flush(10)
 
 
 if __name__ == "__main__":

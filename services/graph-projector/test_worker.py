@@ -2,11 +2,80 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Self
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
-from worker import PermanentMutationError, build_statement, parse_event
+from worker import PermanentMutationError, build_statement, handle_one_message, parse_event
+
+
+class FakeMessage:
+    def __init__(self, value: bytes) -> None:
+        self._value = value
+
+    def topic(self) -> str:
+        return "graph.mutation-requested.v1"
+
+    def partition(self) -> int:
+        return 0
+
+    def offset(self) -> int:
+        return 1
+
+    def key(self) -> bytes | None:
+        return None
+
+    def value(self) -> bytes:
+        return self._value
+
+    def headers(self) -> None:
+        return None
+
+
+class FakeProducer:
+    def __init__(self) -> None:
+        self.produced: list[dict] = []
+
+    def produce(self, topic, key=None, value=None, on_delivery=None) -> None:
+        self.produced.append({"topic": topic, "key": key, "value": value})
+        if on_delivery is not None:
+            on_delivery(None, None)
+
+    def flush(self, timeout: float = 10.0) -> int:
+        return 0
+
+
+class FakeConsumer:
+    def __init__(self) -> None:
+        self.committed: list[object] = []
+
+    def commit(self, message, asynchronous: bool = False) -> None:
+        self.committed.append(message)
+
+
+class FakeTx:
+    def run(self, query: str, **params: object) -> FakeTx:
+        return self
+
+    def consume(self) -> None:
+        return None
+
+
+class FakeSession:
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *args: object) -> bool:
+        return False
+
+    def execute_write(self, fn):
+        return fn(FakeTx())
+
+
+class FakeDriver:
+    def session(self) -> FakeSession:
+        return FakeSession()
 
 
 def event(payload: dict) -> dict:
@@ -73,7 +142,9 @@ def test_rejects_unknown_entity_type() -> None:
 
 def test_requires_tenant_id() -> None:
     with pytest.raises(PermanentMutationError, match="tenant_id"):
-        build_statement({"payload": {"mutation_type": "upsert_document", "stable_id": "document:1"}})
+        build_statement(
+            {"payload": {"mutation_type": "upsert_document", "stable_id": "document:1"}}
+        )
 
 
 def test_node_identity_includes_tenant_id() -> None:
@@ -110,7 +181,9 @@ def test_source_takedown_marks_only_tenant_scoped_source_and_articles() -> None:
         )
     )
 
-    assert "MATCH (source:GraphNode {tenant_id: $tenant_id, stable_id: $stable_id})" in statement.query
+    assert (
+        "MATCH (source:GraphNode {tenant_id: $tenant_id, stable_id: $stable_id})" in statement.query
+    )
     assert "SET article.takedown_status = 'source_requested'" in statement.query
     assert statement.parameters["tenant_id"] == "tenant-1"
 
@@ -123,3 +196,30 @@ def test_parse_event_rejects_malformed_json() -> None:
 def test_parse_event_rejects_non_object_json() -> None:
     with pytest.raises(PermanentMutationError, match="JSON object"):
         parse_event(b"[]")
+
+
+def test_handle_one_message_routes_permanent_failure_through_shared_helper() -> None:
+    message = FakeMessage(b"{not json")
+    consumer = FakeConsumer()
+    producer = FakeProducer()
+
+    handle_one_message(message, consumer, producer, FakeDriver())
+
+    assert len(producer.produced) == 1
+    assert producer.produced[0]["topic"] == "graph.mutation-requested.v1.dlq"
+    assert consumer.committed == [message]
+
+
+def test_handle_one_message_commits_after_successful_processing() -> None:
+    message = FakeMessage(
+        b'{"tenant_id":"tenant-1","event_id":"e-1","payload":'
+        b'{"mutation_type":"upsert_document","stable_id":"document:1","properties":{}}}'
+    )
+    consumer = FakeConsumer()
+    producer = FakeProducer()
+
+    handle_one_message(message, consumer, producer, FakeDriver())
+
+    assert len(producer.produced) == 1
+    assert producer.produced[0]["topic"] == "graph.mutation-completed.v1"
+    assert consumer.committed == [message]

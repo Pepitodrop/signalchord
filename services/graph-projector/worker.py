@@ -9,8 +9,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from confluent_kafka import Producer
+    from confluent_kafka import Consumer, Message, Producer
+    from neo4j import Driver
 
+from python_common.poison_message import handle_message
 from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
@@ -182,21 +184,60 @@ def completion_event(source: dict[str, Any], stable_id: str) -> dict[str, Any]:
     }
 
 
-def dlq_event(source: dict[str, Any], error: Exception) -> dict[str, Any]:
-    return {
-        "failed_event": source,
-        "error_type": type(error).__name__,
-        "error": str(error)[:500],
-        "failed_at": datetime.now(UTC).isoformat(),
-        "origin": "graph-projector",
-    }
-
-
 def publish(producer: Producer, topic: str, key: str, value: dict[str, Any]) -> None:
     producer.produce(
         topic,
         key=key.encode("utf-8"),
         value=json.dumps(value, separators=(",", ":")).encode("utf-8"),
+    )
+
+
+def handle_one_message(
+    message: Message,
+    consumer: Consumer,
+    producer: Producer,
+    driver: Driver,
+) -> None:
+    """Process one graph.mutation-requested.v1 message.
+
+    Preserves the exact prior behavior (a malformed/unsupported mutation is
+    published to DLQ_TOPIC and the offset committed; anything else propagates
+    uncaught) while routing through the shared poison-message helper.
+    """
+    state: dict[str, dict[str, Any] | None] = {"source": None}
+
+    def process() -> None:
+        source = parse_event(message.value())
+        state["source"] = source
+        statement = build_statement(source)
+        with driver.session() as session:
+            session.execute_write(
+                lambda tx: tx.run(statement.query, **statement.parameters).consume()
+            )
+        stable_id = statement.parameters["stable_id"]
+        publish(producer, COMPLETED_TOPIC, stable_id, completion_event(source, stable_id))
+        producer.flush(10)
+
+    def failed_event() -> dict[str, Any]:
+        return state["source"] or {"event_id": "invalid", "payload": {}}
+
+    def dlq_key() -> bytes:
+        source = failed_event()
+        payload = source.get("payload", {})
+        if not isinstance(payload, dict):
+            payload = {}
+        key = payload.get("stable_id", source.get("event_id", "invalid"))
+        return str(key).encode("utf-8")
+
+    handle_message(
+        consumer=consumer,
+        message=message,
+        producer=producer,
+        dlq_topic=DLQ_TOPIC,
+        process=process,
+        origin="graph-projector",
+        failed_event=failed_event,
+        dlq_key=dlq_key,
     )
 
 
@@ -238,28 +279,7 @@ def main() -> None:
                 continue
             if message.error():
                 raise RuntimeError(message.error())
-
-            source: dict[str, Any] | None = None
-            try:
-                source = parse_event(message.value())
-                statement = build_statement(source)
-                with driver.session() as session:
-                    session.execute_write(
-                        lambda tx: tx.run(statement.query, **statement.parameters).consume()
-                    )
-                stable_id = statement.parameters["stable_id"]
-                publish(producer, COMPLETED_TOPIC, stable_id, completion_event(source, stable_id))
-            except PermanentMutationError as error:
-                if source is None:
-                    source = {"event_id": "invalid", "payload": {}}
-                payload = source.get("payload", {})
-                if not isinstance(payload, dict):
-                    payload = {}
-                key = payload.get("stable_id", source.get("event_id", "invalid"))
-                publish(producer, DLQ_TOPIC, str(key), dlq_event(source, error))
-
-            producer.flush(10)
-            consumer.commit(message=message, asynchronous=False)
+            handle_one_message(message, consumer, producer, driver)
     finally:
         consumer.close()
         producer.flush(10)

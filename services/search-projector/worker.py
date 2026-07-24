@@ -7,9 +7,10 @@ from urllib.parse import urlparse
 
 import boto3
 from botocore.config import Config
-from confluent_kafka import Consumer
+from confluent_kafka import Consumer, Producer
 from opensearchpy import OpenSearch
 
+from python_common.poison_message import handle_message
 from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
@@ -34,7 +35,13 @@ def search_client() -> OpenSearch:
     username = os.getenv("OPENSEARCH_USERNAME")
     password = os.getenv("OPENSEARCH_PASSWORD")
     return OpenSearch(
-        hosts=[{"host": parsed.hostname or "localhost", "port": parsed.port or 9200, "scheme": parsed.scheme}],
+        hosts=[
+            {
+                "host": parsed.hostname or "localhost",
+                "port": parsed.port or 9200,
+                "scheme": parsed.scheme,
+            }
+        ],
         http_auth=(username, password) if username and password else None,
         use_ssl=parsed.scheme == "https",
         verify_certs=os.getenv("OPENSEARCH_VERIFY_CERTS", "false").lower() == "true",
@@ -113,8 +120,19 @@ def project(client: OpenSearch, storage, event: dict) -> None:
         )
     elif event_type == "source.takedown.requested.v1":
         source_id = payload["source_id"]
-        query = {"query": {"bool": {"filter": [{"term": {"tenant_id": tenant_id}}, {"term": {"source_id": source_id}}]}}}
-        client.delete_by_query(index="signalchord-articles", body=query, refresh=True, conflicts="proceed")
+        query = {
+            "query": {
+                "bool": {
+                    "filter": [
+                        {"term": {"tenant_id": tenant_id}},
+                        {"term": {"source_id": source_id}},
+                    ]
+                }
+            }
+        }
+        client.delete_by_query(
+            index="signalchord-articles", body=query, refresh=True, conflicts="proceed"
+        )
     elif event_type == "entity.resolved.v1":
         client.index(
             index="signalchord-entities",
@@ -145,6 +163,31 @@ def project(client: OpenSearch, storage, event: dict) -> None:
         )
 
 
+def handle_one_message(
+    message, consumer: Consumer, producer: Producer, client: OpenSearch, storage
+) -> None:
+    """Process one message from any of this worker's subscribed topics.
+
+    The DLQ topic is derived from the message's own source topic (each of
+    this worker's 4 input topics already has its own provisioned `.dlq`
+    topic, per infrastructure/kubernetes/helm/signalchord-community/
+    templates/init-jobs.yaml) rather than a single fixed constant, since
+    this worker -- unlike the others -- consumes more than one topic.
+    """
+
+    def process() -> None:
+        project(client, storage, json.loads(message.value()))
+
+    handle_message(
+        consumer=consumer,
+        message=message,
+        producer=producer,
+        dlq_topic=f"{message.topic()}.dlq",
+        process=process,
+        origin="search-projector",
+    )
+
+
 def main() -> None:
     validate_production_config(["kafka", "minio", "opensearch"])
     running = True
@@ -164,10 +207,18 @@ def main() -> None:
             }
         )
     )
+    producer = Producer(kafka_config(**{"enable.idempotence": True, "acks": "all"}))
     client = search_client()
     storage = storage_client()
     ensure_indexes(client)
-    consumer.subscribe(["document.normalized.v1", "entity.resolved.v1", "claim.clustered.v1", "source.takedown.requested.v1"])
+    consumer.subscribe(
+        [
+            "document.normalized.v1",
+            "entity.resolved.v1",
+            "claim.clustered.v1",
+            "source.takedown.requested.v1",
+        ]
+    )
     try:
         while running:
             message = consumer.poll(1.0)
@@ -175,10 +226,10 @@ def main() -> None:
                 continue
             if message.error():
                 raise RuntimeError(message.error())
-            project(client, storage, json.loads(message.value()))
-            consumer.commit(message=message, asynchronous=False)
+            handle_one_message(message, consumer, producer, client, storage)
     finally:
         consumer.close()
+        producer.flush(10)
 
 
 if __name__ == "__main__":

@@ -7,9 +7,10 @@ import uuid
 from datetime import UTC, datetime
 
 from confluent_kafka import Consumer, Producer
-
-from python_common.production_config import kafka_config, validate_production_config
 from resolver import DEFAULT_ALIASES, resolve_mention
+
+from python_common.poison_message import handle_message
+from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 ALIASES = DEFAULT_ALIASES
@@ -43,7 +44,9 @@ def envelope(source: dict, event_type: str, key: str, payload: dict, stage: str)
 
 
 def publish(producer: Producer, topic: str, key: str, event: dict) -> None:
-    producer.produce(topic, key=key.encode(), value=json.dumps(event, separators=(",", ":")).encode())
+    producer.produce(
+        topic, key=key.encode(), value=json.dumps(event, separators=(",", ":")).encode()
+    )
 
 
 def common_properties(source: dict) -> dict:
@@ -165,6 +168,54 @@ def relation_graph_events(source: dict, payload: dict) -> list[tuple[str, dict]]
     return events
 
 
+def handle_one_message(message, consumer: Consumer, producer: Producer) -> None:
+    """Process one message from either subscribed topic.
+
+    The DLQ topic is derived from the message's own source topic (each has
+    its own provisioned `.dlq` topic), since this worker consumes more than
+    one topic.
+    """
+
+    def process() -> None:
+        source = json.loads(message.value())
+        if source["event_type"] == "entity.mention-extracted.v1":
+            resolution = resolve_mention(source["payload"], ALIASES)
+            publish(
+                producer,
+                "entity.resolved.v1",
+                resolution["entity_id"],
+                envelope(
+                    source,
+                    "entity.resolved.v1",
+                    resolution["entity_id"],
+                    resolution,
+                    "entity-resolution",
+                ),
+            )
+            mutations = graph_events(source, resolution)
+        else:
+            mutations = relation_graph_events(source, source["payload"])
+        for key, mutation in mutations:
+            publish(
+                producer,
+                "graph.mutation-requested.v1",
+                key,
+                envelope(
+                    source, "graph.mutation-requested.v1", key, mutation, "graph-mutation-build"
+                ),
+            )
+        producer.flush(10)
+
+    handle_message(
+        consumer=consumer,
+        message=message,
+        producer=producer,
+        dlq_topic=f"{message.topic()}.dlq",
+        process=process,
+        origin="entity-resolution",
+    )
+
+
 def main() -> None:
     validate_production_config(["kafka"])
     running = True
@@ -193,29 +244,10 @@ def main() -> None:
                 continue
             if message.error():
                 raise RuntimeError(message.error())
-            source = json.loads(message.value())
-            if source["event_type"] == "entity.mention-extracted.v1":
-                resolution = resolve_mention(source["payload"], ALIASES)
-                publish(
-                    producer,
-                    "entity.resolved.v1",
-                    resolution["entity_id"],
-                    envelope(source, "entity.resolved.v1", resolution["entity_id"], resolution, "entity-resolution"),
-                )
-                mutations = graph_events(source, resolution)
-            else:
-                mutations = relation_graph_events(source, source["payload"])
-            for key, mutation in mutations:
-                publish(
-                    producer,
-                    "graph.mutation-requested.v1",
-                    key,
-                    envelope(source, "graph.mutation-requested.v1", key, mutation, "graph-mutation-build"),
-                )
-            producer.flush(10)
-            consumer.commit(message=message, asynchronous=False)
+            handle_one_message(message, consumer, producer)
     finally:
         consumer.close()
+        producer.flush(10)
 
 
 if __name__ == "__main__":
