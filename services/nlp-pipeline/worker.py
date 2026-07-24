@@ -8,14 +8,16 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import boto3
+from app import Document, extract
 from botocore.config import Config
 from confluent_kafka import Consumer, Producer
 
-from app import Document, extract
+from python_common.poison_message import handle_message
 from python_common.production_config import kafka_config, validate_production_config
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
 INPUT_TOPIC = "document.nlp-requested.v1"
+DLQ_TOPIC = f"{INPUT_TOPIC}.dlq"
 MAX_TEXT_BYTES = 5_000_000
 
 
@@ -165,6 +167,186 @@ def graph_base_mutations(source: dict, payload: dict, result) -> list[tuple[str,
     ]
 
 
+def handle_one_message(message: object, consumer: Consumer, producer: Producer, storage) -> None:
+    """Process one document.nlp-requested.v1 message, isolating a permanent
+    failure (oversized/missing text) to DLQ_TOPIC via the shared helper."""
+
+    def process() -> None:
+        source = json.loads(message.value())
+        payload = source["payload"]
+        text = load_text(payload, storage)
+        result = extract(
+            Document(
+                document_id=payload["document_id"],
+                text=text,
+                language_hint=payload.get("language_hint"),
+            )
+        )
+        tenant_id = source["tenant_id"]
+        correlation_id = source["correlation_id"]
+        causation_id = source["event_id"]
+        occurred_at = source.get("occurred_at")
+
+        for key, mutation in graph_base_mutations(source, payload, result):
+            publish(
+                producer,
+                "graph.mutation-requested.v1",
+                key,
+                envelope(
+                    "graph.mutation-requested.v1",
+                    tenant_id,
+                    correlation_id,
+                    causation_id,
+                    key,
+                    mutation,
+                    "graph-mutation-build",
+                    occurred_at,
+                ),
+            )
+
+        for mention in result.mentions:
+            data = mention.model_dump(mode="json") | {
+                "document_id": payload["document_id"],
+                "extraction_model": result.extraction_model,
+                "extraction_version": result.extraction_version,
+            }
+            publish(
+                producer,
+                "entity.mention-extracted.v1",
+                payload["document_id"],
+                envelope(
+                    "entity.mention-extracted.v1",
+                    tenant_id,
+                    correlation_id,
+                    causation_id,
+                    mention.mention_id,
+                    data,
+                    "entity-extraction",
+                    occurred_at,
+                ),
+            )
+        for claim in result.claims:
+            data = claim.model_dump(mode="json") | {
+                "document_id": payload["document_id"],
+                "extraction_model": result.extraction_model,
+                "extraction_version": result.extraction_version,
+            }
+            publish(
+                producer,
+                "claim.extracted.v1",
+                claim.claim_id,
+                envelope(
+                    "claim.extracted.v1",
+                    tenant_id,
+                    correlation_id,
+                    causation_id,
+                    claim.claim_id,
+                    data,
+                    "claim-extraction",
+                    occurred_at,
+                ),
+            )
+        mention_by_id = {mention.mention_id: mention for mention in result.mentions}
+        for relation in result.relations:
+            data = relation.model_dump(mode="json") | {
+                "document_id": payload["document_id"],
+                "subject": mention_by_id[relation.subject_mention_id].model_dump(mode="json"),
+                "object": mention_by_id[relation.object_mention_id].model_dump(mode="json"),
+                "extraction_model": result.extraction_model,
+                "extraction_version": result.extraction_version,
+            }
+            publish(
+                producer,
+                "relationship.extracted.v1",
+                relation.relationship_id,
+                envelope(
+                    "relationship.extracted.v1",
+                    tenant_id,
+                    correlation_id,
+                    causation_id,
+                    relation.relationship_id,
+                    data,
+                    "relation-extraction",
+                    occurred_at,
+                ),
+            )
+
+        graph_path_ids = [relation.relationship_id for relation in result.relations]
+        policy_inputs = {
+            "policy_id": "default-watchlist-novelty",
+            "policy_version_id": "v1",
+            "inputs": {
+                "source_trust": 0.75,
+                "corroboration_count": 1,
+                "contradiction_count": 0,
+                "novelty": 0.8,
+                "entity_relevance": min(1.0, 0.4 + len(result.mentions) * 0.15),
+                "graph_centrality": 0.4,
+                "geographic_relevance": 0.8
+                if any(m.entity_type == "Location" for m in result.mentions)
+                else 0.2,
+                "watchlist_match": 1.0 if any("Acme" in m.text for m in result.mentions) else 0.0,
+                "recency": 1.0,
+                "source_diversity": 0.4,
+            },
+            "evidence_ids": [m.evidence.evidence_id for m in result.mentions]
+            + [c.evidence.evidence_id for c in result.claims]
+            + [r.evidence.evidence_id for r in result.relations],
+            "graph_path_ids": graph_path_ids,
+            "title": payload.get("title") or "New intelligence signal",
+            "summary": f"Extracted {len(result.mentions)} entities, {len(result.claims)} claims and {len(result.relations)} relationships.",
+        }
+        publish(
+            producer,
+            "alert.policy-evaluation-requested.v1",
+            payload["document_id"],
+            envelope(
+                "alert.policy-evaluation-requested.v1",
+                tenant_id,
+                correlation_id,
+                causation_id,
+                payload["document_id"],
+                policy_inputs,
+                "policy-request",
+                occurred_at,
+            ),
+        )
+        completed = {
+            "document_id": payload["document_id"],
+            "mentions": len(result.mentions),
+            "claims": len(result.claims),
+            "relations": len(result.relations),
+            "topics": result.topics,
+            "extraction_model": result.extraction_model,
+            "extraction_version": result.extraction_version,
+        }
+        publish(
+            producer,
+            "document.nlp-completed.v1",
+            payload["document_id"],
+            envelope(
+                "document.nlp-completed.v1",
+                tenant_id,
+                correlation_id,
+                causation_id,
+                payload["document_id"],
+                completed,
+                "nlp-completed",
+                occurred_at,
+            ),
+        )
+        producer.flush(10)
+
+    handle_message(
+        consumer=consumer,
+        message=message,
+        producer=producer,
+        dlq_topic=DLQ_TOPIC,
+        process=process,
+        origin="nlp-pipeline",
+    )
+
+
 def main() -> None:
     validate_production_config(["kafka", "minio"])
     running = True
@@ -194,169 +376,7 @@ def main() -> None:
                 continue
             if message.error():
                 raise RuntimeError(message.error())
-            source = json.loads(message.value())
-            payload = source["payload"]
-            text = load_text(payload, storage)
-            result = extract(
-                Document(
-                    document_id=payload["document_id"],
-                    text=text,
-                    language_hint=payload.get("language_hint"),
-                )
-            )
-            tenant_id = source["tenant_id"]
-            correlation_id = source["correlation_id"]
-            causation_id = source["event_id"]
-            occurred_at = source.get("occurred_at")
-
-            for key, mutation in graph_base_mutations(source, payload, result):
-                publish(
-                    producer,
-                    "graph.mutation-requested.v1",
-                    key,
-                    envelope(
-                        "graph.mutation-requested.v1",
-                        tenant_id,
-                        correlation_id,
-                        causation_id,
-                        key,
-                        mutation,
-                        "graph-mutation-build",
-                        occurred_at,
-                    ),
-                )
-
-            for mention in result.mentions:
-                data = mention.model_dump(mode="json") | {
-                    "document_id": payload["document_id"],
-                    "extraction_model": result.extraction_model,
-                    "extraction_version": result.extraction_version,
-                }
-                publish(
-                    producer,
-                    "entity.mention-extracted.v1",
-                    payload["document_id"],
-                    envelope(
-                        "entity.mention-extracted.v1",
-                        tenant_id,
-                        correlation_id,
-                        causation_id,
-                        mention.mention_id,
-                        data,
-                        "entity-extraction",
-                        occurred_at,
-                    ),
-                )
-            for claim in result.claims:
-                data = claim.model_dump(mode="json") | {
-                    "document_id": payload["document_id"],
-                    "extraction_model": result.extraction_model,
-                    "extraction_version": result.extraction_version,
-                }
-                publish(
-                    producer,
-                    "claim.extracted.v1",
-                    claim.claim_id,
-                    envelope(
-                        "claim.extracted.v1",
-                        tenant_id,
-                        correlation_id,
-                        causation_id,
-                        claim.claim_id,
-                        data,
-                        "claim-extraction",
-                        occurred_at,
-                    ),
-                )
-            mention_by_id = {mention.mention_id: mention for mention in result.mentions}
-            for relation in result.relations:
-                data = relation.model_dump(mode="json") | {
-                    "document_id": payload["document_id"],
-                    "subject": mention_by_id[relation.subject_mention_id].model_dump(mode="json"),
-                    "object": mention_by_id[relation.object_mention_id].model_dump(mode="json"),
-                    "extraction_model": result.extraction_model,
-                    "extraction_version": result.extraction_version,
-                }
-                publish(
-                    producer,
-                    "relationship.extracted.v1",
-                    relation.relationship_id,
-                    envelope(
-                        "relationship.extracted.v1",
-                        tenant_id,
-                        correlation_id,
-                        causation_id,
-                        relation.relationship_id,
-                        data,
-                        "relation-extraction",
-                        occurred_at,
-                    ),
-                )
-
-            graph_path_ids = [relation.relationship_id for relation in result.relations]
-            policy_inputs = {
-                "policy_id": "default-watchlist-novelty",
-                "policy_version_id": "v1",
-                "inputs": {
-                    "source_trust": 0.75,
-                    "corroboration_count": 1,
-                    "contradiction_count": 0,
-                    "novelty": 0.8,
-                    "entity_relevance": min(1.0, 0.4 + len(result.mentions) * 0.15),
-                    "graph_centrality": 0.4,
-                    "geographic_relevance": 0.8 if any(m.entity_type == "Location" for m in result.mentions) else 0.2,
-                    "watchlist_match": 1.0 if any("Acme" in m.text for m in result.mentions) else 0.0,
-                    "recency": 1.0,
-                    "source_diversity": 0.4,
-                },
-                "evidence_ids": [m.evidence.evidence_id for m in result.mentions]
-                + [c.evidence.evidence_id for c in result.claims]
-                + [r.evidence.evidence_id for r in result.relations],
-                "graph_path_ids": graph_path_ids,
-                "title": payload.get("title") or "New intelligence signal",
-                "summary": f"Extracted {len(result.mentions)} entities, {len(result.claims)} claims and {len(result.relations)} relationships.",
-            }
-            publish(
-                producer,
-                "alert.policy-evaluation-requested.v1",
-                payload["document_id"],
-                envelope(
-                    "alert.policy-evaluation-requested.v1",
-                    tenant_id,
-                    correlation_id,
-                    causation_id,
-                    payload["document_id"],
-                    policy_inputs,
-                    "policy-request",
-                    occurred_at,
-                ),
-            )
-            completed = {
-                "document_id": payload["document_id"],
-                "mentions": len(result.mentions),
-                "claims": len(result.claims),
-                "relations": len(result.relations),
-                "topics": result.topics,
-                "extraction_model": result.extraction_model,
-                "extraction_version": result.extraction_version,
-            }
-            publish(
-                producer,
-                "document.nlp-completed.v1",
-                payload["document_id"],
-                envelope(
-                    "document.nlp-completed.v1",
-                    tenant_id,
-                    correlation_id,
-                    causation_id,
-                    payload["document_id"],
-                    completed,
-                    "nlp-completed",
-                    occurred_at,
-                ),
-            )
-            producer.flush(10)
-            consumer.commit(message=message, asynchronous=False)
+            handle_one_message(message, consumer, producer, storage)
     finally:
         consumer.close()
 

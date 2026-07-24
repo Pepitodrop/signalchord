@@ -12,6 +12,7 @@ from pathlib import Path
 
 from confluent_kafka import Consumer, Producer
 
+from python_common.poison_message import handle_message
 from python_common.production_config import kafka_config, validate_production_config
 
 spec = importlib.util.spec_from_file_location(
@@ -23,6 +24,8 @@ sys.modules[spec.name] = engine
 spec.loader.exec_module(engine)
 
 BROKERS = os.getenv("KAFKA_BROKERS", "localhost:29092")
+INPUT_TOPIC = "alert.policy-evaluation-requested.v1"
+DLQ_TOPIC = f"{INPUT_TOPIC}.dlq"
 DEFAULT_POLICY_PATH = Path(
     os.getenv(
         "DEFAULT_VELATO_POLICY_PATH",
@@ -39,6 +42,76 @@ def load_default_policy() -> tuple[list, str, str | None]:
         return ir, "velato-midi", source_hash
     except (OSError, ValueError):
         return engine.default_policy_ir(), "fallback-rules", None
+
+
+def handle_one_message(
+    message,
+    consumer: Consumer,
+    producer: Producer,
+    policy_ir,
+    execution_engine: str,
+    policy_source_hash: str | None,
+    policy_ir_hash: str,
+    policy_analysis: dict,
+) -> None:
+    def process() -> None:
+        source = json.loads(message.value())
+        result = engine.execute(policy_ir, source["payload"]["inputs"])
+        now = datetime.now(UTC).isoformat()
+        stable_alert_id = str(
+            uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{source['tenant_id']}:{source['payload']['policy_version_id']}:{source['idempotency_key']}",
+            )
+        )
+        payload = {
+            "alert_id": stable_alert_id,
+            "policy_id": source["payload"]["policy_id"],
+            "policy_version_id": source["payload"]["policy_version_id"],
+            **result.model_dump(),
+            "evidence_ids": source["payload"].get("evidence_ids", []),
+            "graph_path_ids": source["payload"].get("graph_path_ids", []),
+            "title": source["payload"].get("title", "SignalChord intelligence alert"),
+            "summary": source["payload"].get(
+                "summary", "A configured intelligence policy produced an alert."
+            ),
+            "execution_engine": execution_engine,
+            "velato_dialect_version": engine.DIALECT_VERSION,
+            "policy_source_sha256": policy_source_hash,
+            "policy_ir_sha256": policy_ir_hash,
+            "policy_analysis": policy_analysis,
+        }
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "event_type": "alert.created.v1",
+            "schema_version": 1,
+            "tenant_id": source["tenant_id"],
+            "occurred_at": now,
+            "ingested_at": now,
+            "correlation_id": source["correlation_id"],
+            "causation_id": source["event_id"],
+            "origin": "velato-engine",
+            "processing_stage": "policy-evaluation",
+            "idempotency_key": (
+                f"alert:{source['payload']['policy_version_id']}:{source['idempotency_key']}"
+            ),
+            "payload": payload,
+        }
+        producer.produce(
+            "alert.created.v1",
+            key=payload["alert_id"].encode(),
+            value=json.dumps(event, separators=(",", ":")).encode(),
+        )
+        producer.flush(10)
+
+    handle_message(
+        consumer=consumer,
+        message=message,
+        producer=producer,
+        dlq_topic=DLQ_TOPIC,
+        process=process,
+        origin="velato-engine",
+    )
 
 
 def main() -> None:
@@ -64,7 +137,7 @@ def main() -> None:
     policy_ir, execution_engine, policy_source_hash = load_default_policy()
     policy_ir_hash = engine.ir_sha256(policy_ir)
     policy_analysis = engine.analyze_ir(policy_ir).model_dump()
-    consumer.subscribe(["alert.policy-evaluation-requested.v1"])
+    consumer.subscribe([INPUT_TOPIC])
     try:
         while running:
             msg = consumer.poll(1.0)
@@ -72,59 +145,19 @@ def main() -> None:
                 continue
             if msg.error():
                 raise RuntimeError(msg.error())
-            source = json.loads(msg.value())
-            result = engine.execute(policy_ir, source["payload"]["inputs"])
-            now = datetime.now(UTC).isoformat()
-            stable_alert_id = str(
-                uuid.uuid5(
-                    uuid.NAMESPACE_URL,
-                    f"{source['tenant_id']}:{source['payload']['policy_version_id']}:{source['idempotency_key']}",
-                )
+            handle_one_message(
+                msg,
+                consumer,
+                producer,
+                policy_ir,
+                execution_engine,
+                policy_source_hash,
+                policy_ir_hash,
+                policy_analysis,
             )
-            payload = {
-                "alert_id": stable_alert_id,
-                "policy_id": source["payload"]["policy_id"],
-                "policy_version_id": source["payload"]["policy_version_id"],
-                **result.model_dump(),
-                "evidence_ids": source["payload"].get("evidence_ids", []),
-                "graph_path_ids": source["payload"].get("graph_path_ids", []),
-                "title": source["payload"].get(
-                    "title", "SignalChord intelligence alert"
-                ),
-                "summary": source["payload"].get(
-                    "summary", "A configured intelligence policy produced an alert."
-                ),
-                "execution_engine": execution_engine,
-                "velato_dialect_version": engine.DIALECT_VERSION,
-                "policy_source_sha256": policy_source_hash,
-                "policy_ir_sha256": policy_ir_hash,
-                "policy_analysis": policy_analysis,
-            }
-            event = {
-                "event_id": str(uuid.uuid4()),
-                "event_type": "alert.created.v1",
-                "schema_version": 1,
-                "tenant_id": source["tenant_id"],
-                "occurred_at": now,
-                "ingested_at": now,
-                "correlation_id": source["correlation_id"],
-                "causation_id": source["event_id"],
-                "origin": "velato-engine",
-                "processing_stage": "policy-evaluation",
-                "idempotency_key": (
-                    f"alert:{source['payload']['policy_version_id']}:{source['idempotency_key']}"
-                ),
-                "payload": payload,
-            }
-            producer.produce(
-                "alert.created.v1",
-                key=payload["alert_id"].encode(),
-                value=json.dumps(event, separators=(",", ":")).encode(),
-            )
-            producer.flush(10)
-            consumer.commit(message=msg, asynchronous=False)
     finally:
         consumer.close()
+        producer.flush(10)
 
 
 if __name__ == "__main__":
