@@ -79,6 +79,37 @@ func (b *broker) publish(tenant string, payload []byte) int {
 	return dropped
 }
 
+// realtimeGatewayOrigin identifies this service's own entries in any
+// <topic>.dlq envelope it publishes.
+const realtimeGatewayOrigin = "realtime-gateway"
+
+// realtimeDLQConfig wires the given producer into kafkautil's DLQ path
+// under this service's stable origin name.
+func realtimeDLQConfig(producer *kafkautil.Producer) kafkautil.DLQConfig {
+	return kafkautil.DLQConfig{Producer: producer, Origin: realtimeGatewayOrigin}
+}
+
+// realtimeMessageHandler decodes and republishes realtime events to locally
+// subscribed SSE clients. A malformed payload or one missing tenant_id can
+// never succeed on retry, so both are classified permanent (isolated to
+// this topic's .dlq instead of blocking the partition indefinitely); any
+// other failure remains transient, unchanged.
+func realtimeMessageHandler(logger *slog.Logger, stream *broker) kafkautil.MessageHandler {
+	return func(_ context.Context, message *sarama.ConsumerMessage) error {
+		var envelope events.Envelope[json.RawMessage]
+		if err := json.Unmarshal(message.Value, &envelope); err != nil {
+			return kafkautil.NewPermanentError(fmt.Errorf("decode realtime event: %w", err))
+		}
+		if envelope.TenantID == "" {
+			return kafkautil.NewPermanentError(errors.New("realtime event missing tenant_id"))
+		}
+		if dropped := stream.publish(envelope.TenantID, message.Value); dropped > 0 {
+			logger.Warn("realtime messages dropped for slow subscribers", "tenant_id", envelope.TenantID, "dropped", dropped, "event_type", envelope.EventType)
+		}
+		return nil
+	}
+}
+
 func main() {
 	signalCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -92,20 +123,18 @@ func main() {
 	stream := newBroker()
 	brokers := strings.Split(env("KAFKA_BROKERS", "localhost:29092"), ",")
 
+	producer, err := kafkautil.NewProducer(brokers)
+	if err != nil {
+		logger.Error("create kafka producer", "error", err)
+		os.Exit(1)
+	}
+	defer producer.Close()
+
 	go func() {
-		err := kafkautil.Consume(ctx, brokers, "signalchord-realtime-gateway-v1", []string{"alert.created.v1", "graph.mutation-completed.v1"}, func(_ context.Context, message *sarama.ConsumerMessage) error {
-			var envelope events.Envelope[json.RawMessage]
-			if err := json.Unmarshal(message.Value, &envelope); err != nil {
-				return fmt.Errorf("decode realtime event: %w", err)
-			}
-			if envelope.TenantID == "" {
-				return errors.New("realtime event missing tenant_id")
-			}
-			if dropped := stream.publish(envelope.TenantID, message.Value); dropped > 0 {
-				logger.Warn("realtime messages dropped for slow subscribers", "tenant_id", envelope.TenantID, "dropped", dropped, "event_type", envelope.EventType)
-			}
-			return nil
-		})
+		err := kafkautil.Consume(ctx, brokers, "signalchord-realtime-gateway-v1", []string{"alert.created.v1", "graph.mutation-completed.v1"},
+			realtimeMessageHandler(logger, stream),
+			kafkautil.WithDLQ(realtimeDLQConfig(producer)),
+		)
 		if err != nil && !errors.Is(err, context.Canceled) {
 			logger.Error("Kafka consumer stopped", "error", err)
 			cancel()
