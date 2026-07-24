@@ -25,7 +25,8 @@ The repository contains:
 - `scripts/single-server/render_digest_values.py` for converting release image evidence into Helm values;
 - `scripts/single-server/install.sh` for idempotent installation;
 - `scripts/single-server/health.sh` for workload, storage and HTTPS verification;
-- `scripts/single-server/backup.sh` and `restore.sh` for encrypted, checksum-verified recovery;
+- `scripts/single-server/backup.sh`, `backup-postgres-only.sh` and `restore.sh` for encrypted, checksum-verified recovery;
+- `infrastructure/kubernetes/helm/signalchord/templates/backup-cronjob.yaml` for scheduled, in-cluster automation of both backup cadences;
 - `scripts/single-server/acceptance.sh` for a live permitted-feed article-to-alert canary;
 - `scripts/single-server/update.sh` and `rollback.sh` for immutable upgrades and Helm revision rollback;
 - dedicated CI that lints and renders both charts, validates restricted admission, checks the operations scripts and audits complete repository history.
@@ -38,7 +39,7 @@ The target server needs:
 
 - a supported Linux distribution;
 - k3s or another Kubernetes distribution;
-- `kubectl`, Helm 3, Python 3, `curl`, `age`, `tar` and `sha256sum`;
+- `kubectl`, Helm 3, Python 3, `curl`, `age`, `tar`, `sha256sum` and the MinIO client (`mc`);
 - a default `local-path` storage class or an explicit replacement in community values;
 - `vm.max_map_count=262144` or higher for OpenSearch;
 - a trusted TLS certificate and key for the chosen hostname;
@@ -100,33 +101,58 @@ age-keygen -o ~/.config/signalchord/backup.agekey
 age-keygen -y ~/.config/signalchord/backup.agekey
 ```
 
-Use the printed public recipient to create a backup directory outside the repository:
+Use the printed public recipient to create a backup directory outside the repository, mirrored into a dedicated destination MinIO bucket (distinct from the application's own document bucket) via access-key/secret-key files:
 
 ```bash
 sh scripts/single-server/backup.sh \
   --output /srv/backups/signalchord-$(date +%Y%m%d-%H%M%S) \
   --runtime-env ~/.config/signalchord/runtime.env \
   --age-recipient age1example... \
+  --dest-minio-endpoint backup-object-storage.example.com:9000 \
+  --dest-minio-bucket signalchord-backups-full \
+  --dest-minio-access-key-file ~/.config/signalchord/backup-minio-access-key \
+  --dest-minio-secret-key-file ~/.config/signalchord/backup-minio-secret-key \
   --yes
 ```
 
-The backup operation temporarily suspends feed collection and scales application deployments to zero so no repository-owned workload can mutate authoritative data during the snapshot. It then creates a PostgreSQL custom-format dump, offline Neo4j Community dumps for both the `neo4j` and `system` databases, an offline MinIO volume archive, encrypted runtime configuration, Helm release evidence, Kubernetes resource metadata, Kafka topic metadata, OpenSearch index inventory and SHA-256 checksums. MinIO and Neo4j are restarted before application replicas and the prior CronJob suspension state are restored.
+The backup operation temporarily suspends feed collection and scales application deployments to zero so no repository-owned workload can mutate authoritative data during the snapshot. It then creates a PostgreSQL custom-format dump, offline Neo4j Community dumps for both the `neo4j` and `system` databases, an offline MinIO volume archive, encrypted runtime configuration, Helm release evidence, Kubernetes resource metadata, Kafka topic metadata, OpenSearch index inventory and SHA-256 checksums. MinIO and Neo4j are restarted before application replicas and the prior CronJob suspension state are restored, and the completed directory is mirrored to the destination bucket.
 
 Kafka, OpenSearch and Valkey are treated as rebuildable projections or transport/cache state rather than authoritative backup data. Copy the completed directory to storage that is not on the same physical server. A backup is not accepted until a restore drill succeeds.
 
-## Restore drill
-
-Install the same digest-addressed release into the target namespace before restoring. The restore operation is destructive: application deployments are stopped, PostgreSQL is replaced, MinIO is cleared and loaded, both Neo4j databases are loaded offline, and workloads are restarted only after successful restoration.
+Because this full backup requires scaling the application to zero for the MinIO/Neo4j snapshot, it runs on a longer cadence (daily by default via `backup-cronjob.yaml`) than the 15-minute PostgreSQL recovery-point objective requires. `scripts/single-server/backup-postgres-only.sh` closes that gap: `pg_dump` takes an MVCC-consistent snapshot of a live database, so this lightweight script never suspends feed collection or scales any deployment, and it uploads directly to its own dedicated bucket instead of a local directory:
 
 ```bash
+sh scripts/single-server/backup-postgres-only.sh \
+  --runtime-env ~/.config/signalchord/runtime.env \
+  --age-recipient age1example... \
+  --minio-endpoint backup-object-storage.example.com:9000 \
+  --minio-bucket signalchord-backups-postgres-only \
+  --minio-access-key-file ~/.config/signalchord/backup-minio-access-key \
+  --minio-secret-key-file ~/.config/signalchord/backup-minio-secret-key \
+  --yes
+```
+
+Both cadences are automated in-cluster by `infrastructure/kubernetes/helm/signalchord/templates/backup-cronjob.yaml` (`backup.postgresOnly.schedule`, default every 15 minutes, and `backup.full.schedule`, default daily), reconstructing the runtime environment from the `signalchord-runtime` Secret and reading destination MinIO credentials from `backup.destinationSecretName`.
+
+## Restore drill
+
+Install the same digest-addressed release into the target namespace before restoring, and annotate that namespace `signalchord.io/restore-target: allowed` — `restore-v1.sh` refuses to run against any namespace lacking that exact annotation, regardless of its name or `SIGNALCHORD_ENV` label. The restore operation is destructive: application deployments are stopped, PostgreSQL is replaced, MinIO is cleared and loaded (unless `--postgres-only` is used), both Neo4j databases are loaded offline (unless `--postgres-only` is used), and workloads are restarted only after successful restoration.
+
+```bash
+kubectl annotate namespace signalchord-restore-drill signalchord.io/restore-target=allowed
+
 sh scripts/single-server/restore.sh \
   --backup /srv/backups/signalchord-20260716-180000 \
   --host signalchord.example.com \
   --age-identity ~/.config/signalchord/backup.agekey \
+  --namespace signalchord-restore-drill \
+  --confirm-context "$(kubectl config current-context)" \
+  --smtp-blackhole-host smtp-blackhole.invalid \
+  --expo-blackhole-url https://expo-blackhole.invalid/push \
   --yes
 ```
 
-The stable `restore.sh` entrypoint dispatches to the versioned format implementation. It verifies every checksum, required artifact, authoritative data-set declaration, quiesced-snapshot marker and runtime-file permission before changing the cluster. On failure, application deployments remain stopped for inspection. After success, run the strong acceptance canary and verify that Kafka/OpenSearch projections rebuild from authoritative data.
+The stable `restore.sh` entrypoint dispatches to the versioned format implementation. It verifies every checksum, required artifact, authoritative data-set declaration, quiesced-snapshot marker (skipped for `--postgres-only` backups, which are never quiesced) and runtime-file permission before changing the cluster. It also requires the operator (or an automated drill) to retype the exact `kubectl config current-context` value as `--confirm-context`, refusing to proceed on any mismatch. Before the application is scaled back up, it overrides `SMTP_HOST` and `EXPO_PUSH_URL` in the restored runtime Secret to the supplied black-hole values so a restored environment cannot send real customer email or push notifications. Add `--postgres-only` to restore from a `backup-postgres-only.sh` snapshot (PostgreSQL-corruption-only scenario; requires a manifest containing only `{postgresql, runtime-config}`). On failure, application deployments remain stopped for inspection. After success, run the strong acceptance canary and verify that Kafka/OpenSearch projections rebuild from authoritative data.
 
 ## Updates and rollback
 

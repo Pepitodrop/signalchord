@@ -8,3 +8,4 @@ global:
     signalchord-realtime-gateway: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
     signalchord-web: sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
     signalchord-feed-collector: sha256:1111111111111111111111111111111111111111111111111111111111111111
+    signalchord-backup-tools: sha256:2222222222222222222222222222222222222222222222222222222222222222
