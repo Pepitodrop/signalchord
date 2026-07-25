@@ -77,27 +77,23 @@ spec:
             - {name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0"}
             - {name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data"}
             - {name: CLUSTER_ID, value: "MkU3OEVBNTcwNTJENDM2Qk"}
-          # KRaft controller-quorum formation on a first boot can take longer
-          # than the readiness/liveness budgets below allow for, especially
-          # under constrained CI CPU -- without this, the liveness probe can
-          # SIGTERM the broker mid-startup (while it's waiting for the
-          # controller to acknowledge it's caught up), aborting the process
-          # instead of letting it finish. startupProbe defers readiness and
-          # liveness checks until Kafka is actually serving. The Kafka CLI
-          # starts a JVM for every probe, so constrained runners also need a
-          # realistic per-probe timeout after the broker has started.
+          # KRaft startup must complete before liveness checks begin. Avoid Kafka
+          # CLI commands in probes: each invocation starts another JVM and can
+          # exceed the probe timeout on constrained CI runners even after the
+          # broker is serving. Kubernetes' native TCP probe verifies that the
+          # broker listener is accepting connections without perturbing Kafka.
           startupProbe:
-            exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
+            tcpSocket: {port: broker}
             initialDelaySeconds: 10
-            periodSeconds: 20
-            timeoutSeconds: 20
-            failureThreshold: 24
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 60
           readinessProbe:
-            exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
-            initialDelaySeconds: 20
-            periodSeconds: 20
-            timeoutSeconds: 20
-            failureThreshold: 9
+            tcpSocket: {port: broker}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
           livenessProbe: {tcpSocket: {port: broker}, initialDelaySeconds: 60, periodSeconds: 20}
           resources:
             {{- toYaml .Values.resources.kafka | nindent 12 }}
