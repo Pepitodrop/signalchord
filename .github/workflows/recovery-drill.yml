@@ -50,7 +50,7 @@ env:
 jobs:
   recovery-drill:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
@@ -165,11 +165,16 @@ jobs:
           NAMESPACE: ${{ steps.ids.outputs.namespace }}
         run: |
           set -euo pipefail
+          # 20m (not the usual 15m): kafka's combined broker+controller KRaft
+          # bootstrap on a first-ever volume can intermittently hit a
+          # CancellationException mid-startup and restart -- Kubernetes'
+          # own crash-loop-backoff normally recovers within a few attempts,
+          # this just gives it enough calendar time to do so.
           helm upgrade --install signalchord-community infrastructure/kubernetes/helm/signalchord-community \
             --namespace "$NAMESPACE" \
             --set storageClassName=standard \
             --set monitoring.enabled=false \
-            --wait --timeout 15m
+            --wait --timeout 20m
 
       - name: Install signalchord (original namespace)
         env:
@@ -376,7 +381,7 @@ jobs:
             --namespace "$RESTORE_NAMESPACE" \
             --set storageClassName=standard \
             --set monitoring.enabled=false \
-            --wait --timeout 15m
+            --wait --timeout 20m
           kubectl -n "$RESTORE_NAMESPACE" create secret generic signalchord-runtime --from-env-file="$runtime_env_path"
           openssl req -x509 -nodes -newkey rsa:2048 -days 1 \
             -keyout "$RUNNER_TEMP/restore-tls.key" -out "$RUNNER_TEMP/restore-tls.crt" \
