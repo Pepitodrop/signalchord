@@ -34,6 +34,11 @@ spec:
       labels: {app.kubernetes.io/name: kafka, app.kubernetes.io/part-of: signalchord}
     spec:
       automountServiceAccountToken: false
+      # See the same setting in neo4j.yaml: avoids Kubernetes auto-injecting
+      # legacy Docker-links env vars (e.g. KAFKA_PORT_9092_TCP_PORT, since the
+      # Service here is named "kafka") that could collide with Kafka's own
+      # KAFKA_* environment-variable-to-config-property convention.
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -65,6 +70,19 @@ spec:
             - {name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0"}
             - {name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data"}
             - {name: CLUSTER_ID, value: "MkU3OEVBNTcwNTJENDM2Qk"}
+          # KRaft controller-quorum formation on a first boot can take longer
+          # than the readiness/liveness budgets below allow for, especially
+          # under constrained CI CPU -- without this, the liveness probe can
+          # SIGTERM the broker mid-startup (while it's waiting for the
+          # controller to acknowledge it's caught up), aborting the process
+          # instead of letting it finish. startupProbe defers readiness and
+          # liveness checks until Kafka is actually serving.
+          startupProbe:
+            exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
           readinessProbe:
             exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
             initialDelaySeconds: 20

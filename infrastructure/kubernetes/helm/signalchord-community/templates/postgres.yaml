@@ -52,6 +52,16 @@ spec:
               valueFrom: {secretKeyRef: {name: {{ .Values.existingSecret }}, key: POSTGRES_USER}}
             - name: POSTGRES_PASSWORD
               valueFrom: {secretKeyRef: {name: {{ .Values.existingSecret }}, key: POSTGRES_PASSWORD}}
+            # The volume mount root is owned by whatever created it (root, via
+            # the storage provisioner) -- initdb's own chmod on PGDATA then
+            # fails under this pod's restricted securityContext (non-root,
+            # capabilities dropped, so no CAP_FOWNER to chmod a directory it
+            # doesn't own). Pointing PGDATA at a subdirectory works around
+            # this: postgres creates that subdirectory itself as UID 999, so
+            # it becomes the owner and chmod succeeds. This is the fix the
+            # official postgres image's own docs recommend for exactly this
+            # class of mount-permission issue.
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
           readinessProbe:
             exec: {command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"']}
             initialDelaySeconds: 5

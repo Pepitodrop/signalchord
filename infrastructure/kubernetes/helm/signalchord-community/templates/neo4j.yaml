@@ -24,6 +24,12 @@ spec:
       labels: {app.kubernetes.io/name: neo4j, app.kubernetes.io/part-of: signalchord}
     spec:
       automountServiceAccountToken: false
+      # Kubernetes auto-injects legacy Docker-links env vars named after every
+      # Service in the namespace (e.g. NEO4J_PORT_7687_TCP_PORT, since the
+      # Service here is named "neo4j"). Neo4j's entrypoint treats any NEO4J_*
+      # env var as a neo4j.conf override, so it fails to start on its own
+      # auto-injected variables unless this is disabled.
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 7474
