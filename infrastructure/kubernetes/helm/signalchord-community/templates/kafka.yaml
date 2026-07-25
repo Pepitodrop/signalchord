@@ -83,19 +83,21 @@ spec:
           # SIGTERM the broker mid-startup (while it's waiting for the
           # controller to acknowledge it's caught up), aborting the process
           # instead of letting it finish. startupProbe defers readiness and
-          # liveness checks until Kafka is actually serving.
+          # liveness checks until Kafka is actually serving. The Kafka CLI
+          # starts a JVM for every probe, so constrained runners also need a
+          # realistic per-probe timeout after the broker has started.
           startupProbe:
             exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
             initialDelaySeconds: 10
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 45
+            periodSeconds: 20
+            timeoutSeconds: 20
+            failureThreshold: 24
           readinessProbe:
             exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
             initialDelaySeconds: 20
-            periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 18
+            periodSeconds: 20
+            timeoutSeconds: 20
+            failureThreshold: 9
           livenessProbe: {tcpSocket: {port: broker}, initialDelaySeconds: 60, periodSeconds: 20}
           resources:
             {{- toYaml .Values.resources.kafka | nindent 12 }}
