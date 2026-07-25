@@ -82,7 +82,7 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 30
+            failureThreshold: 45
           readinessProbe:
             exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
             initialDelaySeconds: 20
