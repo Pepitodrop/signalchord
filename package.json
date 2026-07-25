@@ -15,7 +15,8 @@
   },
   "pnpm": {
     "overrides": {
-      "postcss": "8.5.19"
+      "postcss": "8.5.19",
+      "minimatch": "10.2.5"
     }
   }
 }
