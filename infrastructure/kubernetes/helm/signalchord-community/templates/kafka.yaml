@@ -5,6 +5,13 @@ metadata:
   labels: {app.kubernetes.io/name: kafka, app.kubernetes.io/part-of: signalchord}
 spec:
   clusterIP: None
+  # Required for KRaft bootstrap: kafka-0 resolves its own address via
+  # kafka-0.kafka-headless (KAFKA_CONTROLLER_QUORUM_VOTERS below) to reach the
+  # controller, but it can't pass its readiness probe until that connection
+  # succeeds. Kubernetes only publishes a Pod's DNS record once it's Ready
+  # (unless told otherwise), so without this the pod can never resolve itself
+  # and never becomes Ready -- a deadlock, not a slow-startup issue.
+  publishNotReadyAddresses: true
   selector: {app.kubernetes.io/name: kafka, app.kubernetes.io/part-of: signalchord}
   ports:
     - {name: broker, port: 9092, targetPort: broker}
