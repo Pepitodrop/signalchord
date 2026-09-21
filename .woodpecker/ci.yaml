@@ -1,0 +1,13 @@
+when:
+  - event: [push, pull_request]
+
+steps:
+  - name: node
+    image: node:22-bookworm
+    commands:
+      - corepack enable
+      - pnpm install --frozen-lockfile
+      - pnpm lint
+      - pnpm typecheck
+      - pnpm test
+      - pnpm build
