@@ -9,3 +9,10 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: [prometheus:9090]
+
+  - job_name: daytrader
+    metrics_path: /internal/metrics
+    scrape_interval: 30s
+    scrape_timeout: 5s
+    static_configs:
+      - targets: [daytrader-api:8080]

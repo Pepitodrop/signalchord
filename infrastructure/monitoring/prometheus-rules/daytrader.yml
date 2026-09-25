@@ -1,0 +1,39 @@
+groups:
+  - name: daytrader
+    rules:
+      - alert: DaytraderApiDown
+        expr: up{job="daytrader"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: daytrader
+        annotations:
+          summary: "Daytrader API is down"
+          description: "Prometheus cannot scrape the Daytrader read-only API for 2 minutes."
+      - alert: DaytraderForwardCheckpointMissing
+        expr: daytrader_forward_checkpoint_available == 0
+        for: 30m
+        labels:
+          severity: warning
+          service: daytrader
+        annotations:
+          summary: "Daytrader forward checkpoint missing"
+          description: "The forward-only collector checkpoint is unavailable."
+      - alert: DaytraderForwardCheckpointStale
+        expr: daytrader_forward_checkpoint_age_seconds > 345600
+        for: 1h
+        labels:
+          severity: warning
+          service: daytrader
+        annotations:
+          summary: "Daytrader forward checkpoint is stale"
+          description: "The last forward checkpoint is older than four days. Check provider availability, holidays and the collector timer."
+      - alert: DaytraderKillSwitchActive
+        expr: daytrader_kill_switch_active == 1
+        for: 1m
+        labels:
+          severity: warning
+          service: daytrader
+        annotations:
+          summary: "Daytrader hard risk kill switch is active"
+          description: "The shadow/paper Risk Constitution has activated its kill switch."
