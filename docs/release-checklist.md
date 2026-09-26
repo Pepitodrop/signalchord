@@ -94,8 +94,8 @@ Evidence:
 
 Evidence:
 
-- Backup/restore report: repository-side matrix and runbook are in `recovery/recovery-matrix.json`, `docs/recovery-architecture.md`, and `docs/runbooks/backup-restore.md`; staging restore drill evidence still required.
-- Replay/rebuild report: Kafka replay runbook exists in `docs/runbooks/replay.md`; OpenSearch/derived rebuild requirements are documented in `docs/recovery-architecture.md`; raw staging replay/rebuild evidence still required.
+- Backup/restore report: repository-side matrix and runbook are in `recovery/recovery-matrix.json`, `docs/recovery-architecture.md`, and `docs/runbooks/backup-restore.md`. `.github/workflows/recovery-drill.yml` (see `docs/runbooks/recovery-drill-ci.md`) now runs the real PostgreSQL backup/restore path against a disposable kind cluster on every covered PR and on demand, producing a machine-readable evidence artifact; managed/production (staging) restore drill evidence is still required.
+- Replay/rebuild report: Kafka replay runbook exists in `docs/runbooks/replay.md`; OpenSearch/derived rebuild requirements are documented in `docs/recovery-architecture.md`. The same `recovery-drill.yml` workflow demonstrates Kafka replay, both Python and Go poison-message paths, and duplicate-suppression against a real broker; raw staging replay/rebuild evidence is still required.
 - Failure-injection report: dependency and rollback runbooks exist in `docs/runbooks/dependency-outage.md` and `docs/runbooks/rollback-forward-repair.md`; staging game-day evidence still required.
 
 ## 7. Performance and cost

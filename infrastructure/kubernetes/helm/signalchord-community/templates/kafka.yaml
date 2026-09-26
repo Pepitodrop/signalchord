@@ -5,6 +5,13 @@ metadata:
   labels: {app.kubernetes.io/name: kafka, app.kubernetes.io/part-of: signalchord}
 spec:
   clusterIP: None
+  # Required for KRaft bootstrap: kafka-0 resolves its own address via
+  # kafka-0.kafka-headless (KAFKA_CONTROLLER_QUORUM_VOTERS below) to reach the
+  # controller, but it can't pass its readiness probe until that connection
+  # succeeds. Kubernetes only publishes a Pod's DNS record once it's Ready
+  # (unless told otherwise), so without this the pod can never resolve itself
+  # and never becomes Ready -- a deadlock, not a slow-startup issue.
+  publishNotReadyAddresses: true
   selector: {app.kubernetes.io/name: kafka, app.kubernetes.io/part-of: signalchord}
   ports:
     - {name: broker, port: 9092, targetPort: broker}
@@ -34,6 +41,11 @@ spec:
       labels: {app.kubernetes.io/name: kafka, app.kubernetes.io/part-of: signalchord}
     spec:
       automountServiceAccountToken: false
+      # See the same setting in neo4j.yaml: avoids Kubernetes auto-injecting
+      # legacy Docker-links env vars (e.g. KAFKA_PORT_9092_TCP_PORT, since the
+      # Service here is named "kafka") that could collide with Kafka's own
+      # KAFKA_* environment-variable-to-config-property convention.
+      enableServiceLinks: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -65,12 +77,23 @@ spec:
             - {name: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS, value: "0"}
             - {name: KAFKA_LOG_DIRS, value: "/var/lib/kafka/data"}
             - {name: CLUSTER_ID, value: "MkU3OEVBNTcwNTJENDM2Qk"}
-          readinessProbe:
-            exec: {command: [sh, -c, '/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null']}
-            initialDelaySeconds: 20
+          # KRaft startup must complete before liveness checks begin. Avoid Kafka
+          # CLI commands in probes: each invocation starts another JVM and can
+          # exceed the probe timeout on constrained CI runners even after the
+          # broker is serving. Kubernetes' native TCP probe verifies that the
+          # broker listener is accepting connections without perturbing Kafka.
+          startupProbe:
+            tcpSocket: {port: broker}
+            initialDelaySeconds: 10
             periodSeconds: 10
-            timeoutSeconds: 5
-            failureThreshold: 18
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket: {port: broker}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
           livenessProbe: {tcpSocket: {port: broker}, initialDelaySeconds: 60, periodSeconds: 20}
           resources:
             {{- toYaml .Values.resources.kafka | nindent 12 }}

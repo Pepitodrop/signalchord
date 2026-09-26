@@ -96,5 +96,36 @@
     "OpenSearch rebuild from authoritative records",
     "staging rollback by immutable digest",
     "business/security approval of RPO/RTO residual risk"
-  ]
+  ],
+  "ci_automated_drill": {
+    "workflow": ".github/workflows/recovery-drill.yml",
+    "description": "Disposable-kind-cluster rehearsal of the backup/restore/replay/poison-message tooling, run on pull requests touching the covered paths and on manual workflow_dispatch. Exercises the real scripts against a real (locally built, not mocked) PostgreSQL, Kafka, and application deployment inside an ephemeral cluster. Does not exercise managed or production infrastructure -- see external_blockers, which remain open.",
+    "evidence_artifact_schema": "scripts/recovery-drill/build_evidence.py",
+    "verified": [
+      {
+        "store": "postgresql",
+        "validations": [
+          "scripts/single-server/backup.sh and backup-postgres-only.sh produce a restorable artifact against a real PostgreSQL StatefulSet",
+          "backup-postgres-only.sh does not scale the control-plane deployment to zero (no-downtime backup)",
+          "scripts/single-server/restore.sh (restore-v1.sh) refuses to run against a namespace missing the signalchord.io/restore-target annotation",
+          "scripts/single-server/restore.sh restores Postgres to an exact per-table row-count and md5(id) checksum match against the pre-failure baseline",
+          "rails db:migrate:status reports zero pending migrations after restore"
+        ]
+      },
+      {
+        "store": "kafka",
+        "validations": [
+          "scripts/single-server/replay-kafka.sh resets a real consumer group's offsets against a real broker and redelivery does not create a duplicate row (idempotent find_or_initialize_by(stable_id:) in Internal::V1::AlertsController)",
+          "a permanent Python poison message (services/python_common/poison_message.py, graph-projector) is published to <topic>.dlq with required source/error metadata, the source offset advances past it, and a healthy message behind it on the same partition is processed",
+          "a permanent Go poison message (services/internal/kafkautil, realtime-gateway) shows the same DLQ, metadata, and offset-advance-past-poison behavior",
+          "a transient failure is not published to any DLQ and does not advance the committed offset"
+        ]
+      }
+    ],
+    "not_covered": [
+      "managed/production PostgreSQL and Kafka infrastructure (this drill runs an in-cluster PostgreSQL StatefulSet and a single-broker Kafka StatefulSet inside a disposable kind cluster, not any managed service)",
+      "object_storage, neo4j and secrets_and_configuration restore paths (the full backup/restore bundle includes these, but this drill's automated verification only reconciles PostgreSQL row counts and checksums)",
+      "cross-broker Kafka mirroring or DR replication"
+    ]
+  }
 }
