@@ -28,6 +28,15 @@ groups:
         annotations:
           summary: "Daytrader forward checkpoint is stale"
           description: "The last forward checkpoint is older than four days. Check provider availability, holidays and the collector timer."
+      - alert: DaytraderForwardSourceStale
+        expr: daytrader_forward_source_stale == 1
+        for: 15m
+        labels:
+          severity: warning
+          service: daytrader
+        annotations:
+          summary: "Daytrader forward market data is stale"
+          description: "Forward model {{ $labels.model_id }} reports provider data older than the collector's configured freshness threshold. The frozen experiment must not fabricate or backfill evidence; check HFDL freshness and collector logs."
       - alert: DaytraderKillSwitchActive
         expr: daytrader_kill_switch_active == 1
         for: 1m
